@@ -136,12 +136,13 @@ export function FileManager() {
       }
       clearClipboard();
       loadFiles();
+      refreshFolderTree();
     } catch (err) {
       console.error("Paste failed", err);
     } finally {
       setPasting(false);
     }
-  }, [clipboard, activeResourceType, currentPath, clearClipboard, loadFiles]);
+  }, [clipboard, activeResourceType, currentPath, clearClipboard, loadFiles, refreshFolderTree]);
 
   // Load config (resource types)
   useEffect(() => {
@@ -641,7 +642,15 @@ export function FileManager() {
       </div>
 
       {/* Modals */}
-      {showUpload && <UploadModal onClose={() => setShowUpload(false)} onUploaded={loadFiles} />}
+      {showUpload && (
+        <UploadModal
+          onClose={() => setShowUpload(false)}
+          onUploaded={() => {
+            loadFiles();
+            refreshFolderTree();
+          }}
+        />
+      )}
       {showNewFolder && (
         <NewFolderModal
           onClose={() => setShowNewFolder(false)}
@@ -675,6 +684,7 @@ export function FileManager() {
           onConfirm={async () => {
             await deleteFiles(activeResourceType, currentPath, deleteConfirmTarget);
             loadFiles();
+            refreshFolderTree();
           }}
         />
       )}
@@ -684,6 +694,7 @@ export function FileManager() {
           onClose={() => setCompressTarget(null)}
           onCompressed={() => {
             loadFiles();
+            refreshFolderTree();
             setCompressTarget(null);
           }}
         />
@@ -697,6 +708,7 @@ export function FileManager() {
           onConfirm={async () => {
             await extractZip(activeResourceType, currentPath, extractTarget);
             loadFiles();
+            refreshFolderTree();
             setExtractTarget(null);
           }}
         />
