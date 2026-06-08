@@ -1,13 +1,29 @@
 package auth
 
 import (
+	"context"
+	"crypto/tls"
+	"errors"
+	"fmt"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const contextKeyUsername = "username"
+
+var remoteAuthClient = &http.Client{
+	Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	},
+	Timeout: 10 * time.Second,
+}
 
 // Middleware returns a Gin middleware that validates Bearer JWT tokens
 func Middleware(jwtSecret string) gin.HandlerFunc {
@@ -23,29 +39,101 @@ func Middleware(jwtSecret string) gin.HandlerFunc {
 			}
 		}
 
-		// 2. Fallback to query parameter "token" (useful for browser media requests)
+		// 2. Fallback to cookie "token" (for remote/PHP style token checking)
+		if token == "" {
+			if cookieToken, err := c.Cookie("token"); err == nil {
+				token = cookieToken
+			}
+		}
+
+		// 3. Fallback to query parameter "token" (useful for browser media requests)
 		if token == "" {
 			token = c.Query("token")
 		}
 
 		if token == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": gin.H{"code": 401, "message": "Authorization token required (via Header or token query param)"},
+				"error": gin.H{"code": 401, "message": "Authorization token required (via Header, Cookie, or token query param)"},
 			})
 			return
 		}
 
-		claims, err := ParseAccessToken(token, jwtSecret)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": gin.H{"code": 401, "message": "Invalid or expired token: " + err.Error()},
-			})
-			return
+		var username string
+		var err error
+
+		validationMode := strings.ToLower(os.Getenv("JWT_VALIDATION_MODE"))
+		if validationMode == "remote" {
+			apiURL := os.Getenv("API_URL")
+			username, err = validateRemote(c.Request.Context(), token, apiURL)
+			if err != nil {
+				if strings.Contains(err.Error(), "environment variable") {
+					c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+						"error": gin.H{"code": 500, "message": err.Error()},
+					})
+				} else {
+					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+						"error": gin.H{"code": 401, "message": err.Error()},
+					})
+				}
+				return
+			}
+		} else {
+			username, err = validateLocal(token, jwtSecret)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+					"error": gin.H{"code": 401, "message": "Invalid or expired token: " + err.Error()},
+				})
+				return
+			}
 		}
 
-		c.Set(contextKeyUsername, claims.Username)
+		c.Set(contextKeyUsername, username)
 		c.Next()
 	}
+}
+
+// validateLocal validates the token locally using the JWT secret and returns the username
+func validateLocal(token, jwtSecret string) (string, error) {
+	claims, err := ParseAccessToken(token, jwtSecret)
+	if err != nil {
+		return "", err
+	}
+	return claims.Username, nil
+}
+
+// validateRemote validates the token against an external API_URL and returns the username
+func validateRemote(ctx context.Context, token, apiURL string) (string, error) {
+	if apiURL == "" {
+		return "", errors.New("API_URL environment variable is not configured for remote validation")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create remote validation request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.0)")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := remoteAuthClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("remote token validation request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", errors.New("invalid or expired token (remote check)")
+	}
+
+	// If valid, extract username from token payload (unverified, since verified remotely)
+	username := "admin" // Fallback default
+	var claims Claims
+	tokenObj, _, err := jwt.NewParser().ParseUnverified(token, &claims)
+	if err == nil && tokenObj != nil && claims.Username != "" {
+		username = claims.Username
+	}
+
+	return username, nil
 }
 
 // GetUsername extracts the authenticated username from the Gin context

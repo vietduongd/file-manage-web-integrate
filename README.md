@@ -143,6 +143,8 @@ ClassicEditor.create(document.querySelector('#editor'), {
 | `MINIO_BUCKET` | `media` | Tên bucket |
 | `MINIO_PUBLIC_BASE_URL` | `http://localhost:9000` | URL public cho file |
 | `JWT_SECRET` | — | Secret key cho JWT (**bắt buộc đổi**) |
+| `JWT_VALIDATION_MODE` | `local` | Chế độ xác thực JWT (`local` hoặc `remote` qua API bên ngoài) |
+| `API_URL` | — | URL API xác thực bên ngoài (bắt buộc khi `JWT_VALIDATION_MODE=remote`) |
 | `ADMIN_USERNAME` | `admin` | Username đăng nhập |
 | `ADMIN_PASSWORD` | `admin123` | Password đăng nhập |
 | `MAX_UPLOAD_SIZE_MB` | `50` | Kích thước tối đa upload |
