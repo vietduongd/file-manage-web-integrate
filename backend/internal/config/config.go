@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -24,13 +25,25 @@ type Config struct {
 	MinioPublicBaseURL string
 
 	// JWT
-	JWTSecret              string
-	JWTExpiryHours         int
-	JWTRefreshExpiryHours  int
+	JWTSecret             string
+	JWTExpiryHours        int
+	JWTRefreshExpiryHours int
 
 	// Auth
 	AdminUsername string
 	AdminPassword string
+
+	// External auth
+	ExternalAuthVerifyURL    string
+	ExternalAuthVerifyMethod string
+	ExternalAuthTimeout      time.Duration
+	ExternalAuthAppID        string
+	ExternalAuthAPIKey       string
+
+	// Login rate limiting
+	LoginRateLimitMax      int
+	LoginRateLimitWindow   time.Duration
+	LoginRateLimitDisabled bool
 
 	// Upload
 	MaxUploadSizeMB int64
@@ -66,8 +79,16 @@ func Load() *Config {
 		JWTExpiryHours:        getEnvInt("JWT_EXPIRY_HOURS", 24),
 		JWTRefreshExpiryHours: getEnvInt("JWT_REFRESH_EXPIRY_HOURS", 168),
 
-		AdminUsername: getEnv("ADMIN_USERNAME", "admin"),
-		AdminPassword: getEnv("ADMIN_PASSWORD", "admin123"),
+		AdminUsername:            getEnv("ADMIN_USERNAME", "admin"),
+		AdminPassword:            getEnv("ADMIN_PASSWORD", "admin123"),
+		ExternalAuthVerifyURL:    getEnv("EXTERNAL_AUTH_VERIFY_URL", ""),
+		ExternalAuthVerifyMethod: strings.ToUpper(getEnv("EXTERNAL_AUTH_VERIFY_METHOD", "GET")),
+		ExternalAuthTimeout:      time.Duration(getEnvInt("EXTERNAL_AUTH_TIMEOUT_SECONDS", 5)) * time.Second,
+		ExternalAuthAppID:        getEnv("EXTERNAL_AUTH_APP_ID", ""),
+		ExternalAuthAPIKey:       getEnv("EXTERNAL_AUTH_API_KEY", ""),
+		LoginRateLimitMax:        getEnvInt("LOGIN_RATE_LIMIT_MAX", 5),
+		LoginRateLimitWindow:     time.Duration(getEnvInt("LOGIN_RATE_LIMIT_WINDOW_SECONDS", 600)) * time.Second,
+		LoginRateLimitDisabled:   getEnvBool("LOGIN_RATE_LIMIT_DISABLED", false),
 
 		MaxUploadSizeMB: int64(getEnvInt("MAX_UPLOAD_SIZE_MB", 50)),
 

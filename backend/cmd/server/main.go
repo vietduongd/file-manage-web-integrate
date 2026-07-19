@@ -94,6 +94,7 @@ func main() {
 	authGroup := r.Group("/auth")
 	{
 		authGroup.POST("/token", authHandler.Token)
+		authGroup.POST("/external-token", authHandler.ExternalToken)
 		authGroup.POST("/refresh", authHandler.Refresh)
 	}
 
