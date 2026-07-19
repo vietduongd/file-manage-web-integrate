@@ -93,6 +93,7 @@ func main() {
 	// Auth routes (no middleware)
 	authGroup := r.Group("/auth")
 	{
+		authGroup.POST("/embed/login", authHandler.EmbedLogin)
 		authGroup.POST("/token", authHandler.Token)
 		authGroup.POST("/external-token", authHandler.ExternalToken)
 		authGroup.POST("/refresh", authHandler.Refresh)

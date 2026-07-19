@@ -74,9 +74,13 @@ export function FileManager() {
   const [compressTarget, setCompressTarget] = useState<string[] | null>(null);
   const [extractTarget, setExtractTarget] = useState<string | null>(null);
 
-  // Integration detection (e.g. opened as a popup or iframe by CKEditor / TinyMCE)
   const urlParams = new URLSearchParams(window.location.search);
-  const isIntegrationMode = urlParams.has('CKEditorFuncNum') || urlParams.get('mode') === 'popup' || urlParams.has('CKEditor');
+  const isIntegrationMode = urlParams.has('CKEditorFuncNum') ||
+    urlParams.get('mode') === 'popup' ||
+    urlParams.get('mode') === 'iframe' ||
+    urlParams.has('CKEditor') ||
+    window.location.pathname.includes('/embed') ||
+    (window.parent && window.parent !== window);
 
   const loadFiles = useCallback(() => {
     setLoading(true);
@@ -187,17 +191,19 @@ export function FileManager() {
     return () => window.removeEventListener('paste', handleClipboardFilePaste);
   }, [activeResourceType, currentPath, refreshCurrentView]);
 
-  // Load config (resource types)
+  // Load config (resource types) if not already loaded
   useEffect(() => {
-    fetchConfig()
-      .then((cfg) => {
-        setResourceTypes(cfg.resourceTypes);
-        if (cfg.resourceTypes.length > 0 && !resourceTypes.length) {
-          setActiveResourceType(cfg.resourceTypes[0].name);
-        }
-      })
-      .catch(() => {});
-  }, []);
+    if (resourceTypes.length === 0) {
+      fetchConfig()
+        .then((cfg) => {
+          setResourceTypes(cfg.resourceTypes);
+          if (cfg.resourceTypes.length > 0) {
+            setActiveResourceType(cfg.resourceTypes[0].name);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [resourceTypes, setResourceTypes, setActiveResourceType]);
 
   useEffect(() => { loadFiles(); }, [loadFiles, fileRefreshKey]);
 

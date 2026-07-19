@@ -39,9 +39,11 @@ func Middleware(jwtSecret string) gin.HandlerFunc {
 			}
 		}
 
-		// 2. Fallback to cookie "token" (for remote/PHP style token checking)
+		// 2. Fallback to cookies (both file_session and legacy token cookie)
 		if token == "" {
-			if cookieToken, err := c.Cookie("token"); err == nil {
+			if cookieToken, err := c.Cookie("file_session"); err == nil {
+				token = cookieToken
+			} else if cookieToken, err := c.Cookie("token"); err == nil {
 				token = cookieToken
 			}
 		}

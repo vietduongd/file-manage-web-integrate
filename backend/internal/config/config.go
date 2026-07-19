@@ -40,6 +40,10 @@ type Config struct {
 	ExternalAuthAppID        string
 	ExternalAuthAPIKey       string
 
+	// Embed ticket auth
+	EmbedTicketVerifyURL  string
+	EmbedTicketServiceKey string
+
 	// Login rate limiting
 	LoginRateLimitMax      int
 	LoginRateLimitWindow   time.Duration
@@ -86,6 +90,8 @@ func Load() *Config {
 		ExternalAuthTimeout:      time.Duration(getEnvInt("EXTERNAL_AUTH_TIMEOUT_SECONDS", 5)) * time.Second,
 		ExternalAuthAppID:        getEnv("EXTERNAL_AUTH_APP_ID", ""),
 		ExternalAuthAPIKey:       getEnv("EXTERNAL_AUTH_API_KEY", ""),
+		EmbedTicketVerifyURL:     getEnv("EMBED_TICKET_VERIFY_URL", ""),
+		EmbedTicketServiceKey:    getEnv("EMBED_TICKET_SERVICE_KEY", ""),
 		LoginRateLimitMax:        getEnvInt("LOGIN_RATE_LIMIT_MAX", 5),
 		LoginRateLimitWindow:     time.Duration(getEnvInt("LOGIN_RATE_LIMIT_WINDOW_SECONDS", 600)) * time.Second,
 		LoginRateLimitDisabled:   getEnvBool("LOGIN_RATE_LIMIT_DISABLED", false),

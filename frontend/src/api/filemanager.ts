@@ -5,6 +5,7 @@ const BASE_URL = import.meta.env.VITE_API_URL || '';
 export const api = axios.create({
   baseURL: BASE_URL,
   timeout: 30000,
+  withCredentials: true,
 });
 
 // Request interceptor — attach JWT token
@@ -54,6 +55,9 @@ export interface TokenResponse {
 
 export const login = (username: string, password: string) =>
   api.post<TokenResponse>('/auth/token', { username, password }).then((r) => r.data);
+
+export const embedLogin = (ticket: string) =>
+  api.post<TokenResponse>('/auth/embed/login', { ticket }).then((r) => r.data);
 
 // ── Config ────────────────────────────────────────────────────────────────
 

@@ -3,8 +3,10 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -178,6 +180,153 @@ func TestExternalTokenReturnsBadGatewayWhenVerifyFails(t *testing.T) {
 	w := postExternalToken(router, "Bearer external-token")
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("failed verify returned %d, want %d", w.Code, http.StatusBadGateway)
+	}
+}
+
+func TestEmbedLoginRequiresTicket(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := testAuthConfig()
+	handler := NewAuthHandler(cfg)
+	router := gin.New()
+	router.POST("/auth/embed/login", handler.EmbedLogin)
+
+	body := []byte(`{}`)
+	req := httptest.NewRequest(http.MethodPost, "/auth/embed/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("missing ticket returned %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestEmbedLoginVerifiesTicketAndReturnsTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var gotServiceKey, gotBody string
+	verifyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotServiceKey = r.Header.Get("X-Service-Key")
+		bodyBytes, _ := io.ReadAll(r.Body)
+		gotBody = string(bodyBytes)
+
+		w.Header().Set("Content-Type", "application/json")
+		// Response format as per requirement/integrate.md
+		_, _ = w.Write([]byte(`{
+			"data": {
+				"adminId": "a587bb8d-84c3-463a-ab05-eadf949e91a5",
+				"userName": "manage",
+				"fullName": "Quản trị viên",
+				"roles": []
+			},
+			"message": "",
+			"code": ""
+		}`))
+	}))
+	defer verifyServer.Close()
+
+	cfg := testAuthConfig()
+	cfg.EmbedTicketVerifyURL = verifyServer.URL
+	cfg.EmbedTicketServiceKey = "test-service-key"
+
+	handler := NewAuthHandler(cfg)
+	router := gin.New()
+	router.POST("/auth/embed/login", handler.EmbedLogin)
+
+	body := []byte(`{"ticket":"test-ticket-123"}`)
+	req := httptest.NewRequest(http.MethodPost, "/auth/embed/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("successful login returned status %d, want %d: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	if gotServiceKey != "test-service-key" {
+		t.Fatalf("verify X-Service-Key = %q, want %q", gotServiceKey, "test-service-key")
+	}
+
+	if !strings.Contains(gotBody, `"ticket":"test-ticket-123"`) {
+		t.Fatalf("verify request body = %q, should contain ticket %q", gotBody, "test-ticket-123")
+	}
+
+	var resp models.TokenResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode token response: %v", err)
+	}
+	if resp.TokenType != "Bearer" || resp.AccessToken == "" || resp.RefreshToken == "" {
+		t.Fatalf("unexpected token response: %+v", resp)
+	}
+}
+
+func TestEmbedLoginHandlesInvalidTicket(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	verifyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer verifyServer.Close()
+
+	cfg := testAuthConfig()
+	cfg.EmbedTicketVerifyURL = verifyServer.URL
+	cfg.EmbedTicketServiceKey = "test-service-key"
+	handler := NewAuthHandler(cfg)
+	router := gin.New()
+	router.POST("/auth/embed/login", handler.EmbedLogin)
+
+	body := []byte(`{"ticket":"invalid-ticket"}`)
+	req := httptest.NewRequest(http.MethodPost, "/auth/embed/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("invalid ticket returned status %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestEmbedLoginUsesEmbedTicketVerifierInsteadOfExternalTokenVerifier(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	externalCalled := false
+	externalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		externalCalled = true
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	defer externalServer.Close()
+
+	var gotServiceKey string
+	embedServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotServiceKey = r.Header.Get("X-Service-Key")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"userName":"manage"},"message":"","code":""}`))
+	}))
+	defer embedServer.Close()
+
+	cfg := testAuthConfig()
+	cfg.ExternalAuthVerifyURL = externalServer.URL
+	cfg.ExternalAuthAPIKey = "external-key"
+	cfg.EmbedTicketVerifyURL = embedServer.URL
+	cfg.EmbedTicketServiceKey = "embed-key"
+	handler := NewAuthHandler(cfg)
+	router := gin.New()
+	router.POST("/auth/embed/login", handler.EmbedLogin)
+
+	body := []byte(`{"ticket":"test-ticket-123"}`)
+	req := httptest.NewRequest(http.MethodPost, "/auth/embed/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("embed login returned status %d, want %d: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if externalCalled {
+		t.Fatal("embed login called external token verifier")
+	}
+	if gotServiceKey != "embed-key" {
+		t.Fatalf("verify X-Service-Key = %q, want %q", gotServiceKey, "embed-key")
 	}
 }
 
