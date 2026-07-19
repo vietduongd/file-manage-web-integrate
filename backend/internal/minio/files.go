@@ -75,6 +75,10 @@ func (c *Client) PutFile(ctx context.Context, key, contentType string, body io.R
 
 // DeleteFile deletes a single object
 func (c *Client) DeleteFile(ctx context.Context, key string) error {
+	return c.DeleteFiles(ctx, []string{key})
+}
+
+func (c *Client) deleteObject(ctx context.Context, key string) error {
 	_, err := c.S3.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(c.Bucket),
 		Key:    aws.String(key),
@@ -87,9 +91,27 @@ func (c *Client) DeleteFiles(ctx context.Context, keys []string) error {
 	if len(keys) == 0 {
 		return nil
 	}
+	allKeys := make([]string, 0, len(keys))
+	for _, key := range keys {
+		allKeys = appendUniqueKey(allKeys, key)
+		thumbKeys, err := c.listThumbnailKeys(ctx, key)
+		if err != nil {
+			return err
+		}
+		for _, thumbKey := range thumbKeys {
+			allKeys = appendUniqueKey(allKeys, thumbKey)
+		}
+	}
+	return c.deleteObjects(ctx, allKeys)
+}
+
+func (c *Client) deleteObjects(ctx context.Context, keys []string) error {
+	if len(keys) == 0 {
+		return nil
+	}
 	objs := make([]types.ObjectIdentifier, len(keys))
-	for i, k := range keys {
-		objs[i] = types.ObjectIdentifier{Key: aws.String(k)}
+	for i, key := range keys {
+		objs[i] = types.ObjectIdentifier{Key: aws.String(key)}
 	}
 	_, err := c.S3.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 		Bucket: aws.String(c.Bucket),
@@ -113,7 +135,51 @@ func (c *Client) RenameFile(ctx context.Context, srcKey, dstKey string) error {
 	if err := c.CopyFile(ctx, srcKey, dstKey); err != nil {
 		return fmt.Errorf("copy failed: %w", err)
 	}
-	return c.DeleteFile(ctx, srcKey)
+
+	srcThumbKeys, err := c.listThumbnailKeys(ctx, srcKey)
+	if err != nil {
+		return fmt.Errorf("list thumbnails failed: %w", err)
+	}
+
+	oldPrefix := thumbnailPrefix(srcKey)
+	newPrefix := thumbnailPrefix(dstKey)
+	keysToDelete := []string{srcKey}
+	for _, srcThumbKey := range srcThumbKeys {
+		dstThumbKey := newPrefix + strings.TrimPrefix(srcThumbKey, oldPrefix)
+		if err := c.CopyFile(ctx, srcThumbKey, dstThumbKey); err != nil {
+			return fmt.Errorf("copy thumbnail failed: %w", err)
+		}
+		keysToDelete = append(keysToDelete, srcThumbKey)
+	}
+
+	return c.deleteObjects(ctx, keysToDelete)
+}
+
+func (c *Client) listThumbnailKeys(ctx context.Context, originalKey string) ([]string, error) {
+	out, err := c.S3.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket: aws.String(c.Bucket),
+		Prefix: aws.String(thumbnailPrefix(originalKey)),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	keys := make([]string, 0, len(out.Contents))
+	for _, obj := range out.Contents {
+		if obj.Key != nil {
+			keys = append(keys, *obj.Key)
+		}
+	}
+	return keys, nil
+}
+
+func appendUniqueKey(keys []string, key string) []string {
+	for _, existing := range keys {
+		if existing == key {
+			return keys
+		}
+	}
+	return append(keys, key)
 }
 
 // GetObject returns the object body reader (caller must close)

@@ -62,6 +62,11 @@ func (h *MediaHandler) serveResized(c *gin.Context, defaultW, defaultH int, fit 
 	opts := minioclient.ThumbOptions{Width: w, Height: h2, Fit: fit}
 	thumbBytes, err := h.mc.GetOrCreateThumbnail(c.Request.Context(), key, opts)
 	if err != nil {
+		if minioclient.IsOriginalNotFound(err) {
+			h.logger.Warn("thumbnail original not found", zap.String("key", key), zap.Error(err))
+			c.JSON(http.StatusNotFound, errorResp(404, "Original file not found"))
+			return
+		}
 		h.logger.Error("GetOrCreateThumbnail failed", zap.String("key", key), zap.Error(err))
 		c.JSON(http.StatusInternalServerError, errorResp(500, "Failed to generate thumbnail"))
 		return

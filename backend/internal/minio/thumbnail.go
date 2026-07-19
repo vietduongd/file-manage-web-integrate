@@ -3,6 +3,7 @@ package minioclient
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 	"github.com/disintegration/imaging"
 )
 
@@ -22,9 +25,19 @@ type ThumbOptions struct {
 	Fit    bool // true = crop to fit, false = fit within bounds
 }
 
+var ErrOriginalNotFound = errors.New("original not found")
+
 // ThumbnailKey returns the MinIO key for a cached thumbnail
 func ThumbnailKey(originalKey string, opts ThumbOptions) string {
 	return fmt.Sprintf("_thumbs/%s_%dx%d.jpg", originalKey, opts.Width, opts.Height)
+}
+
+func thumbnailPrefix(originalKey string) string {
+	return "_thumbs/" + originalKey + "_"
+}
+
+func IsOriginalNotFound(err error) bool {
+	return errors.Is(err, ErrOriginalNotFound)
 }
 
 // GetOrCreateThumbnail returns a thumbnail image as bytes.
@@ -42,7 +55,11 @@ func (c *Client) GetOrCreateThumbnail(ctx context.Context, originalKey string, o
 	// Generate thumbnail from original
 	origBody, _, err := c.GetObject(ctx, originalKey)
 	if err != nil {
-		return nil, fmt.Errorf("original not found: %w", err)
+		if isObjectNotFound(err) {
+			_ = c.deleteObject(ctx, thumbKey)
+			return nil, fmt.Errorf("%w: %w", ErrOriginalNotFound, err)
+		}
+		return nil, fmt.Errorf("get original failed: %w", err)
 	}
 	defer origBody.Close()
 
@@ -84,6 +101,23 @@ func (c *Client) GetOrCreateThumbnail(ctx context.Context, originalKey string, o
 	})
 
 	return thumbBytes, nil
+}
+
+func isObjectNotFound(err error) bool {
+	var noSuchKey *types.NoSuchKey
+	if errors.As(err, &noSuchKey) {
+		return true
+	}
+
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.ErrorCode() {
+		case "NoSuchKey", "NotFound", "NotFoundException":
+			return true
+		}
+	}
+
+	return false
 }
 
 // IsImage returns true if the file extension suggests an image

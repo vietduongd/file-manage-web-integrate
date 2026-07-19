@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { renameFile, renameFolder } from '../api/filemanager';
+import { deleteFolder, renameFile, renameFolder } from '../api/filemanager';
 import { useFileManagerStore } from '../store/fileManagerStore';
 
 interface RenameModalProps {
@@ -116,6 +116,77 @@ export function NewFolderModal({ onClose, onCreated }: NewFolderModalProps) {
               required
             />
             {error && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{error}</p>}
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+interface DeleteFolderModalProps {
+  onClose: () => void;
+  onDeleted: () => void;
+}
+
+export function DeleteFolderModal({ onClose, onDeleted }: DeleteFolderModalProps) {
+  const { deleteFolderTarget, activeResourceType } = useFileManagerStore();
+  const [confirmName, setConfirmName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  if (!deleteFolderTarget) return null;
+
+  const isConfirmed = confirmName.trim() === deleteFolderTarget.name;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isConfirmed) return;
+    setLoading(true);
+    setError('');
+    try {
+      await deleteFolder(activeResourceType, deleteFolderTarget.path);
+      onDeleted();
+      onClose();
+    } catch (err: any) {
+      setError(err?.response?.data?.error?.message || 'Xóa thư mục thất bại');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <span className="modal-title">Xóa thư mục</span>
+          <button className="modal-close" onClick={onClose}><X size={16} /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <p style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12 }}>
+              Thao tác này sẽ xóa thư mục "{deleteFolderTarget.name}" và toàn bộ nội dung bên trong.
+            </p>
+            <label className="form-label">Nhập đúng tên thư mục để xác nhận</label>
+            <input
+              className="form-input"
+              value={confirmName}
+              onChange={(e) => setConfirmName(e.target.value)}
+              placeholder={deleteFolderTarget.name}
+              autoFocus
+              required
+            />
+            {error && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{error}</p>}
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="toolbar-btn" onClick={onClose} disabled={loading}>Hủy</button>
+            <button
+              type="submit"
+              className="toolbar-btn danger"
+              style={{ background: 'var(--danger)', color: 'white', borderColor: 'var(--danger)' }}
+              disabled={loading || !isConfirmed}
+            >
+              {loading ? 'Đang xóa...' : 'Xóa thư mục'}
+            </button>
           </div>
         </form>
       </div>

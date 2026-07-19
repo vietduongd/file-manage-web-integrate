@@ -102,27 +102,48 @@ func (c *Client) DeleteFolder(ctx context.Context, prefix string) error {
 		prefix += "/"
 	}
 
-	// List all objects under prefix
+	keys, err := c.listObjectKeys(ctx, prefix)
+	if err != nil {
+		return err
+	}
+	thumbKeys, err := c.listObjectKeys(ctx, "_thumbs/"+prefix)
+	if err != nil {
+		return err
+	}
+
+	return c.deleteObjectKeysInBatches(ctx, append(keys, thumbKeys...))
+}
+
+func (c *Client) listObjectKeys(ctx context.Context, prefix string) ([]string, error) {
 	paginator := s3.NewListObjectsV2Paginator(c.S3, &s3.ListObjectsV2Input{
 		Bucket: aws.String(c.Bucket),
 		Prefix: aws.String(prefix),
 	})
 
-	var objectsToDelete []types.ObjectIdentifier
+	var keys []string
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		for _, obj := range page.Contents {
-			objectsToDelete = append(objectsToDelete, types.ObjectIdentifier{
-				Key: obj.Key,
-			})
+			if obj.Key != nil {
+				keys = append(keys, *obj.Key)
+			}
 		}
 	}
 
-	if len(objectsToDelete) == 0 {
+	return keys, nil
+}
+
+func (c *Client) deleteObjectKeysInBatches(ctx context.Context, keys []string) error {
+	if len(keys) == 0 {
 		return nil
+	}
+
+	objectsToDelete := make([]types.ObjectIdentifier, len(keys))
+	for i, key := range keys {
+		objectsToDelete[i] = types.ObjectIdentifier{Key: aws.String(key)}
 	}
 
 	// Batch delete (up to 1000 per request)

@@ -28,6 +28,8 @@ interface FileManagerState {
   // Files
   files: FileInfo[];
   setFiles: (files: FileInfo[]) => void;
+  fileRefreshKey: number;
+  refreshFiles: () => void;
   selectedFiles: Set<string>;
   toggleSelectFile: (name: string) => void;
   selectAllFiles: () => void;
@@ -44,6 +46,8 @@ interface FileManagerState {
   setShowNewFolder: (v: boolean) => void;
   renameTarget: { type: 'file' | 'folder'; name: string; path: string } | null;
   setRenameTarget: (t: FileManagerState['renameTarget']) => void;
+  deleteFolderTarget: { name: string; path: string } | null;
+  setDeleteFolderTarget: (t: FileManagerState['deleteFolderTarget']) => void;
   previewFile: FileInfo | null;
   setPreviewFile: (f: FileInfo | null) => void;
 
@@ -90,6 +94,8 @@ export const useFileManagerStore = create<FileManagerState>((set, get) => ({
   // Files
   files: [],
   setFiles: (files) => set({ files }),
+  fileRefreshKey: 0,
+  refreshFiles: () => set((s) => ({ fileRefreshKey: s.fileRefreshKey + 1 })),
   selectedFiles: new Set(),
   toggleSelectFile: (name) => {
     const sel = new Set(get().selectedFiles);
@@ -111,6 +117,8 @@ export const useFileManagerStore = create<FileManagerState>((set, get) => ({
   setShowNewFolder: (v) => set({ showNewFolder: v }),
   renameTarget: null,
   setRenameTarget: (t) => set({ renameTarget: t }),
+  deleteFolderTarget: null,
+  setDeleteFolderTarget: (t) => set({ deleteFolderTarget: t }),
   previewFile: null,
   setPreviewFile: (f) => set({ previewFile: f }),
 

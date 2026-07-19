@@ -48,6 +48,7 @@ export function UploadModal({ onClose, onUploaded }: UploadModalProps) {
   const handleUpload = async () => {
     setUploading(true);
     const pending = items.filter((i) => i.status === 'pending');
+    let uploadedCount = 0;
 
     for (let i = 0; i < items.length; i++) {
       if (items[i].status !== 'pending') continue;
@@ -57,13 +58,14 @@ export function UploadModal({ onClose, onUploaded }: UploadModalProps) {
           updateItem(i, { progress: p });
         });
         updateItem(i, { status: 'done', progress: 100 });
+        uploadedCount++;
       } catch (err: any) {
         updateItem(i, { status: 'error', error: err?.response?.data?.error?.message || 'Upload thất bại' });
       }
     }
 
     setUploading(false);
-    if (pending.length > 0) onUploaded();
+    if (pending.length > 0 && uploadedCount > 0) onUploaded();
   };
 
   const removeItem = (index: number) => {

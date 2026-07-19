@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Folder,
   FolderOpen,
+  Trash2,
 } from 'lucide-react';
 import { fetchFolders, moveFiles, type FolderInfo } from '../api/filemanager';
 import { useFileManagerStore } from '../store/fileManagerStore';
@@ -20,7 +21,7 @@ function FolderTreeNode({ name, path, resourceType, depth, hasChildren }: Folder
   const [children, setChildren] = useState<FolderInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const { currentPath, setCurrentPath, folderRefreshKey, expandedPaths, togglePathExpanded, refreshFolderTree } = useFileManagerStore();
+  const { currentPath, setCurrentPath, folderRefreshKey, expandedPaths, togglePathExpanded, refreshFolderTree, setDeleteFolderTarget } = useFileManagerStore();
   const isActive = currentPath === path;
   const isExpanded = expandedPaths.has(path);
 
@@ -89,6 +90,16 @@ function FolderTreeNode({ name, path, resourceType, depth, hasChildren }: Folder
           {isActive || isExpanded ? <FolderOpen size={14} /> : <Folder size={14} />}
         </span>
         <span className="folder-name">{name}</span>
+        <button
+          className="folder-delete-btn"
+          title="Xóa thư mục"
+          onClick={(e) => {
+            e.stopPropagation();
+            setDeleteFolderTarget({ name, path });
+          }}
+        >
+          <Trash2 size={12} />
+        </button>
       </div>
       {isExpanded && children.length > 0 && (
         <div className="folder-children">

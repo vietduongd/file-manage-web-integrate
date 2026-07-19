@@ -7,12 +7,12 @@ import {
 } from 'lucide-react';
 import {
   fetchConfig, fetchFiles, deleteFiles,
-  thumbnailUrl, type FileInfo, copyFiles, moveFiles, extractZip,
+  thumbnailUrl, type FileInfo, copyFiles, moveFiles, extractZip, uploadFile,
 } from '../api/filemanager';
 import { useFileManagerStore } from '../store/fileManagerStore';
 import { FolderTree } from './FolderTree';
 import { UploadModal } from './UploadModal';
-import { RenameModal, NewFolderModal, ConfirmModal, CompressModal } from './Modals';
+import { RenameModal, NewFolderModal, ConfirmModal, CompressModal, DeleteFolderModal } from './Modals';
 import { ContextMenu, PreviewModal } from './ContextMenu';
 import { StatsWidget } from './StatsWidget';
 
@@ -39,22 +39,30 @@ function getResourceIcon(name: string) {
   }
 }
 
+function isTextInputActive() {
+  const activeEl = document.activeElement;
+  if (!activeEl) return false;
+  return activeEl.tagName === 'INPUT'
+    || activeEl.tagName === 'TEXTAREA'
+    || activeEl.getAttribute('contenteditable') === 'true';
+}
+
 export function FileManager() {
   const store = useFileManagerStore();
   const {
     activeResourceType, setActiveResourceType,
     resourceTypes, setResourceTypes,
     currentPath, setCurrentPath,
-    files, setFiles,
+    files, setFiles, fileRefreshKey, refreshFiles,
     selectedFiles, toggleSelectFile, selectAllFiles, clearSelection,
     viewMode, setViewMode,
     showUpload, setShowUpload,
     showNewFolder, setShowNewFolder,
     renameTarget, setRenameTarget,
+    deleteFolderTarget, setDeleteFolderTarget,
     previewFile, setPreviewFile,
     setAuthenticated,
     refreshFolderTree,
-    folderRefreshKey,
     clipboard, setClipboard, clearClipboard,
   } = store;
 
@@ -77,7 +85,12 @@ export function FileManager() {
       .then((res) => setFiles(res.files))
       .catch(() => setFiles([]))
       .finally(() => setLoading(false));
-  }, [activeResourceType, currentPath, folderRefreshKey]);
+  }, [activeResourceType, currentPath, clearSelection, setFiles]);
+
+  const refreshCurrentView = useCallback(() => {
+    refreshFiles();
+    refreshFolderTree();
+  }, [refreshFiles, refreshFolderTree]);
 
   const handleDeleteSelected = () => {
     if (selectedFiles.size === 0) return;
@@ -135,14 +148,44 @@ export function FileManager() {
         await moveFiles(payloadFiles, destination);
       }
       clearClipboard();
-      loadFiles();
-      refreshFolderTree();
+      refreshCurrentView();
     } catch (err) {
       console.error("Paste failed", err);
     } finally {
       setPasting(false);
     }
-  }, [clipboard, activeResourceType, currentPath, clearClipboard, loadFiles, refreshFolderTree]);
+  }, [clipboard, activeResourceType, currentPath, clearClipboard, refreshCurrentView]);
+
+  useEffect(() => {
+    const handleClipboardFilePaste = async (e: ClipboardEvent) => {
+      if (isTextInputActive()) return;
+
+      const pastedFiles = Array.from(e.clipboardData?.files ?? []);
+      if (pastedFiles.length === 0) return;
+
+      e.preventDefault();
+      setPasting(true);
+      let uploadedCount = 0;
+      try {
+        for (const file of pastedFiles) {
+          try {
+            await uploadFile(activeResourceType, currentPath, file);
+            uploadedCount++;
+          } catch (err) {
+            console.error("Clipboard upload failed", err);
+          }
+        }
+        if (uploadedCount > 0) {
+          refreshCurrentView();
+        }
+      } finally {
+        setPasting(false);
+      }
+    };
+
+    window.addEventListener('paste', handleClipboardFilePaste);
+    return () => window.removeEventListener('paste', handleClipboardFilePaste);
+  }, [activeResourceType, currentPath, refreshCurrentView]);
 
   // Load config (resource types)
   useEffect(() => {
@@ -156,7 +199,7 @@ export function FileManager() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => { loadFiles(); }, [loadFiles]);
+  useEffect(() => { loadFiles(); }, [loadFiles, fileRefreshKey]);
 
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
 
@@ -183,7 +226,7 @@ export function FileManager() {
           name: ''
         };
         await moveFiles(filesToMove, destination);
-        refreshFolderTree();
+        refreshCurrentView();
       }
     } catch (err) {
       console.error("Breadcrumb drop failed", err);
@@ -193,8 +236,7 @@ export function FileManager() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const activeEl = document.activeElement;
-      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.getAttribute('contenteditable') === 'true')) {
+      if (isTextInputActive()) {
         return;
       }
 
@@ -646,8 +688,7 @@ export function FileManager() {
         <UploadModal
           onClose={() => setShowUpload(false)}
           onUploaded={() => {
-            loadFiles();
-            refreshFolderTree();
+            refreshCurrentView();
           }}
         />
       )}
@@ -655,8 +696,7 @@ export function FileManager() {
         <NewFolderModal
           onClose={() => setShowNewFolder(false)}
           onCreated={() => {
-            loadFiles();
-            refreshFolderTree();
+            refreshCurrentView();
           }}
         />
       )}
@@ -664,8 +704,18 @@ export function FileManager() {
         <RenameModal
           onClose={() => setRenameTarget(null)}
           onRenamed={() => {
-            loadFiles();
-            refreshFolderTree();
+            refreshCurrentView();
+          }}
+        />
+      )}
+      {deleteFolderTarget && (
+        <DeleteFolderModal
+          onClose={() => setDeleteFolderTarget(null)}
+          onDeleted={() => {
+            if (currentPath.startsWith(deleteFolderTarget.path)) {
+              setCurrentPath('/');
+            }
+            refreshCurrentView();
           }}
         />
       )}
@@ -683,8 +733,7 @@ export function FileManager() {
           onClose={() => setDeleteConfirmTarget(null)}
           onConfirm={async () => {
             await deleteFiles(activeResourceType, currentPath, deleteConfirmTarget);
-            loadFiles();
-            refreshFolderTree();
+            refreshCurrentView();
           }}
         />
       )}
@@ -693,8 +742,7 @@ export function FileManager() {
           files={compressTarget}
           onClose={() => setCompressTarget(null)}
           onCompressed={() => {
-            loadFiles();
-            refreshFolderTree();
+            refreshCurrentView();
             setCompressTarget(null);
           }}
         />
@@ -707,8 +755,7 @@ export function FileManager() {
           onClose={() => setExtractTarget(null)}
           onConfirm={async () => {
             await extractZip(activeResourceType, currentPath, extractTarget);
-            loadFiles();
-            refreshFolderTree();
+            refreshCurrentView();
             setExtractTarget(null);
           }}
         />
