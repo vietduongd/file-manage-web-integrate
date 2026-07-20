@@ -34,8 +34,16 @@ func (h *MediaHandler) Preview(c *gin.Context) {
 
 func (h *MediaHandler) serveResized(c *gin.Context, defaultW, defaultH int, fit bool) {
 	resourceTypeName := c.Query("type")
-	folderPath := c.Query("path")
-	fileName := c.Query("name")
+	folderPath, err := minioclient.NormalizeFolderPath(c.Query("path"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid folder path"))
+		return
+	}
+	fileName, err := minioclient.NormalizeObjectName(c.Query("name"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid file name"))
+		return
+	}
 
 	if fileName == "" {
 		c.JSON(http.StatusBadRequest, errorResp(400, "Missing file name"))

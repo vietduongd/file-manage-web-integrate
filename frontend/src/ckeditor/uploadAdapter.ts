@@ -9,7 +9,6 @@
  *     extraPlugins: [CKFinderUploadAdapterPlugin],
  *     ckfinderBackend: {
  *       apiUrl: 'http://localhost:8080',
- *       token: localStorage.getItem('access_token'),
  *       resourceType: 'Images',
  *       uploadPath: '/',
  *     }
@@ -25,7 +24,6 @@ interface FileLoader {
 interface CKEditorConfig {
   ckfinderBackend?: {
     apiUrl: string;
-    token: string;
     resourceType?: string;
     uploadPath?: string;
   };
@@ -34,7 +32,6 @@ interface CKEditorConfig {
 class CKFinderUploadAdapter {
   private loader: FileLoader;
   private apiUrl: string;
-  private token: string;
   private resourceType: string;
   private uploadPath: string;
   private xhr: XMLHttpRequest | null = null;
@@ -42,7 +39,6 @@ class CKFinderUploadAdapter {
   constructor(loader: FileLoader, config: CKEditorConfig['ckfinderBackend']) {
     this.loader = loader;
     this.apiUrl = config?.apiUrl || '';
-    this.token = config?.token || localStorage.getItem('access_token') || '';
     this.resourceType = config?.resourceType || 'Images';
     this.uploadPath = config?.uploadPath || '/';
   }
@@ -67,7 +63,7 @@ class CKFinderUploadAdapter {
   private _initRequest(): void {
     const xhr = (this.xhr = new XMLHttpRequest());
     xhr.open('POST', `${this.apiUrl}/api/upload/ck`, true);
-    xhr.setRequestHeader('Authorization', `Bearer ${this.token}`);
+    xhr.withCredentials = true;
     xhr.responseType = 'json';
   }
 
@@ -135,7 +131,6 @@ export function CKFinderUploadAdapterPlugin(editor: any): void {
  *   extraPlugins: [CKFinderUploadAdapterPlugin],
  *   ckfinderBackend: {
  *     apiUrl: 'http://localhost:8080',
- *     token: localStorage.getItem('access_token') || '',
  *     resourceType: 'Images',
  *     uploadPath: '/',
  *   },

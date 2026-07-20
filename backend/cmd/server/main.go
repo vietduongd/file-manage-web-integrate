@@ -22,7 +22,11 @@ import (
 
 func main() {
 	// ── Config ────────────────────────────────────────────────────────────
-	cfg := config.Load()
+	cfg, err := config.LoadValidated()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid configuration: %v\n", err)
+		os.Exit(1)
+	}
 
 	// ── Logger ────────────────────────────────────────────────────────────
 	logger := buildLogger(cfg.ServerEnv)
@@ -95,8 +99,8 @@ func main() {
 	{
 		authGroup.POST("/embed/login", authHandler.EmbedLogin)
 		authGroup.POST("/token", authHandler.Token)
-		authGroup.POST("/external-token", authHandler.ExternalToken)
 		authGroup.POST("/refresh", authHandler.Refresh)
+		authGroup.POST("/logout", authHandler.Logout)
 	}
 
 	// Protected API routes

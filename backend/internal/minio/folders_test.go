@@ -57,3 +57,27 @@ func TestDeleteFolderDeletesThumbnailObjectsUnderFolder(t *testing.T) {
 		thumbKeys[1],
 	})
 }
+
+func TestNormalizeFolderPathRejectsTraversal(t *testing.T) {
+	for _, value := range []string{"../files", "safe/../../files", `safe\..\files`} {
+		if got, err := NormalizeFolderPath(value); err == nil {
+			t.Fatalf("NormalizeFolderPath(%q) = %q, want error", value, got)
+		}
+	}
+}
+
+func TestNormalizeObjectNameRejectsPathSeparators(t *testing.T) {
+	for _, value := range []string{"../secret.jpg", "nested/photo.jpg", `nested\photo.jpg`, ".."} {
+		if got, err := NormalizeObjectName(value); err == nil {
+			t.Fatalf("NormalizeObjectName(%q) = %q, want error", value, got)
+		}
+	}
+}
+
+func TestNormalizeRelativeObjectPathRejectsZipSlip(t *testing.T) {
+	for _, value := range []string{"../secret.jpg", "safe/../../secret.jpg", `/absolute.jpg`, `safe\..\secret.jpg`} {
+		if got, err := NormalizeRelativeObjectPath(value); err == nil {
+			t.Fatalf("NormalizeRelativeObjectPath(%q) = %q, want error", value, got)
+		}
+	}
+}

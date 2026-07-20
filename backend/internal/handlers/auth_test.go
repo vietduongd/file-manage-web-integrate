@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ckfindercompatible/backend/internal/auth"
 	"github.com/ckfindercompatible/backend/internal/config"
 	"github.com/ckfindercompatible/backend/internal/models"
 	"github.com/gin-gonic/gin"
@@ -66,123 +65,6 @@ func TestTokenSuccessfulLoginResetsFailedAttempts(t *testing.T) {
 	}
 }
 
-func TestExternalTokenGeneratesInternalTokenAfterExternalVerify(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	var gotAuth, gotAppID, gotAPIKey string
-	verifyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotAuth = r.Header.Get("Authorization")
-		gotAppID = r.Header.Get("x-app-id")
-		gotAPIKey = r.Header.Get("x-api-key")
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"username":"admin"}`))
-	}))
-	defer verifyServer.Close()
-
-	cfg := testAuthConfig()
-	cfg.ExternalAuthVerifyURL = verifyServer.URL
-	cfg.ExternalAuthAppID = "file-manager"
-	cfg.ExternalAuthAPIKey = "verify-secret"
-	handler := NewAuthHandler(cfg)
-	router := gin.New()
-	router.POST("/auth/external-token", handler.ExternalToken)
-
-	w := postExternalToken(router, "Bearer external-token")
-	if w.Code != http.StatusOK {
-		t.Fatalf("external token returned %d, want %d: %s", w.Code, http.StatusOK, w.Body.String())
-	}
-	if gotAuth != "Bearer external-token" {
-		t.Fatalf("verify Authorization = %q, want %q", gotAuth, "Bearer external-token")
-	}
-	if gotAppID != "file-manager" {
-		t.Fatalf("verify x-app-id = %q, want %q", gotAppID, "file-manager")
-	}
-	if gotAPIKey != "verify-secret" {
-		t.Fatalf("verify x-api-key = %q, want %q", gotAPIKey, "verify-secret")
-	}
-
-	var resp models.TokenResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode token response: %v", err)
-	}
-	if resp.TokenType != "Bearer" || resp.AccessToken == "" || resp.RefreshToken == "" {
-		t.Fatalf("unexpected token response: %+v", resp)
-	}
-
-	claims, err := auth.ParseAccessToken(resp.AccessToken, cfg.JWTSecret)
-	if err != nil {
-		t.Fatalf("parse internal access token: %v", err)
-	}
-	if claims.Username != "admin" {
-		t.Fatalf("internal token username = %q, want %q", claims.Username, "admin")
-	}
-}
-
-func TestExternalTokenRequiresBearerWithoutCallingVerify(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	called := false
-	verifyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer verifyServer.Close()
-
-	cfg := testAuthConfig()
-	cfg.ExternalAuthVerifyURL = verifyServer.URL
-	handler := NewAuthHandler(cfg)
-	router := gin.New()
-	router.POST("/auth/external-token", handler.ExternalToken)
-
-	w := postExternalToken(router, "")
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("missing bearer returned %d, want %d", w.Code, http.StatusUnauthorized)
-	}
-	if called {
-		t.Fatal("verify service was called without bearer token")
-	}
-}
-
-func TestExternalTokenRejectsUnauthorizedExternalToken(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	verifyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-	}))
-	defer verifyServer.Close()
-
-	cfg := testAuthConfig()
-	cfg.ExternalAuthVerifyURL = verifyServer.URL
-	handler := NewAuthHandler(cfg)
-	router := gin.New()
-	router.POST("/auth/external-token", handler.ExternalToken)
-
-	w := postExternalToken(router, "Bearer bad-token")
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthorized external token returned %d, want %d", w.Code, http.StatusUnauthorized)
-	}
-}
-
-func TestExternalTokenReturnsBadGatewayWhenVerifyFails(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	verifyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer verifyServer.Close()
-
-	cfg := testAuthConfig()
-	cfg.ExternalAuthVerifyURL = verifyServer.URL
-	handler := NewAuthHandler(cfg)
-	router := gin.New()
-	router.POST("/auth/external-token", handler.ExternalToken)
-
-	w := postExternalToken(router, "Bearer external-token")
-	if w.Code != http.StatusBadGateway {
-		t.Fatalf("failed verify returned %d, want %d", w.Code, http.StatusBadGateway)
-	}
-}
-
 func TestEmbedLoginRequiresTicket(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := testAuthConfig()
@@ -198,6 +80,25 @@ func TestEmbedLoginRequiresTicket(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("missing ticket returned %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestEmbedLoginRequiresVerifierConfigInDevelopment(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := testAuthConfig()
+	cfg.ServerEnv = "development"
+	handler := NewAuthHandler(cfg)
+	router := gin.New()
+	router.POST("/auth/embed/login", handler.EmbedLogin)
+
+	body := []byte(`{"ticket":"any-ticket"}`)
+	req := httptest.NewRequest(http.MethodPost, "/auth/embed/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("missing verifier config returned %d, want %d", w.Code, http.StatusServiceUnavailable)
 	}
 }
 
@@ -286,50 +187,6 @@ func TestEmbedLoginHandlesInvalidTicket(t *testing.T) {
 	}
 }
 
-func TestEmbedLoginUsesEmbedTicketVerifierInsteadOfExternalTokenVerifier(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	externalCalled := false
-	externalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		externalCalled = true
-		w.WriteHeader(http.StatusTeapot)
-	}))
-	defer externalServer.Close()
-
-	var gotServiceKey string
-	embedServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotServiceKey = r.Header.Get("X-Service-Key")
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":{"userName":"manage"},"message":"","code":""}`))
-	}))
-	defer embedServer.Close()
-
-	cfg := testAuthConfig()
-	cfg.ExternalAuthVerifyURL = externalServer.URL
-	cfg.ExternalAuthAPIKey = "external-key"
-	cfg.EmbedTicketVerifyURL = embedServer.URL
-	cfg.EmbedTicketServiceKey = "embed-key"
-	handler := NewAuthHandler(cfg)
-	router := gin.New()
-	router.POST("/auth/embed/login", handler.EmbedLogin)
-
-	body := []byte(`{"ticket":"test-ticket-123"}`)
-	req := httptest.NewRequest(http.MethodPost, "/auth/embed/login", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("embed login returned status %d, want %d: %s", w.Code, http.StatusOK, w.Body.String())
-	}
-	if externalCalled {
-		t.Fatal("embed login called external token verifier")
-	}
-	if gotServiceKey != "embed-key" {
-		t.Fatalf("verify X-Service-Key = %q, want %q", gotServiceKey, "embed-key")
-	}
-}
-
 func testAuthConfig() *config.Config {
 	return &config.Config{
 		AdminUsername:          "admin",
@@ -340,7 +197,6 @@ func testAuthConfig() *config.Config {
 		LoginRateLimitMax:      5,
 		LoginRateLimitWindow:   time.Minute,
 		LoginRateLimitDisabled: false,
-		ExternalAuthTimeout:    time.Second,
 	}
 }
 
@@ -351,16 +207,6 @@ func postToken(t *testing.T, router *gin.Engine, username, password, ip string) 
 	req := httptest.NewRequest(http.MethodPost, "/auth/token", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = ip + ":12345"
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	return w
-}
-
-func postExternalToken(router *gin.Engine, authorization string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodPost, "/auth/external-token", nil)
-	if authorization != "" {
-		req.Header.Set("Authorization", authorization)
-	}
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	return w

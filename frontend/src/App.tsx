@@ -23,9 +23,7 @@ export default function App() {
         const urlParams = new URLSearchParams(window.location.search);
         const ticket = urlParams.get('ticket');
         if (ticket) {
-          const data = await embedLogin(ticket);
-          localStorage.setItem('access_token', data.access_token);
-          localStorage.setItem('refresh_token', data.refresh_token);
+          await embedLogin(ticket);
           // Remove the ticket from URL to prevent re-processing
           window.history.replaceState({}, document.title, window.location.pathname);
         }
@@ -38,7 +36,6 @@ export default function App() {
         setAuthenticated(true);
       } catch (err) {
         // Fallback: If fetchConfig or embedLogin fails, clear credentials and require login
-        localStorage.clear();
         setAuthenticated(false);
       } finally {
         setCheckingAuth(false);

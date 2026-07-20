@@ -8,34 +8,18 @@ export const api = axios.create({
   withCredentials: true,
 });
 
-// Request interceptor — attach JWT token
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-// Response interceptor — handle 401 (token expired)
+// Response interceptor — refresh HttpOnly cookie session on 401
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const original = error.config;
-    if (error.response?.status === 401 && !original._retry) {
+    if (error.response?.status === 401 && !original?._retry && !original?.url?.includes('/auth/refresh')) {
       original._retry = true;
-      const refreshToken = localStorage.getItem('refresh_token');
-      if (refreshToken) {
-        try {
-          const { data } = await axios.post(`${BASE_URL}/auth/refresh`, {
-            refresh_token: refreshToken,
-          });
-          localStorage.setItem('access_token', data.access_token);
-          localStorage.setItem('refresh_token', data.refresh_token);
-          original.headers.Authorization = `Bearer ${data.access_token}`;
-          return api(original);
-        } catch {
-          localStorage.clear();
+      try {
+        await axios.post(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true });
+        return api(original);
+      } catch {
+        if (window.location.pathname !== '/login') {
           window.location.href = '/login';
         }
       }
@@ -58,6 +42,9 @@ export const login = (username: string, password: string) =>
 
 export const embedLogin = (ticket: string) =>
   api.post<TokenResponse>('/auth/embed/login', { ticket }).then((r) => r.data);
+
+export const logout = () =>
+  api.post('/auth/logout').then((r) => r.data);
 
 // ── Config ────────────────────────────────────────────────────────────────
 
@@ -158,8 +145,7 @@ export const uploadFile = (
 };
 
 export const thumbnailUrl = (type: string, path: string, name: string, w = 150, h = 150) => {
-  const token = localStorage.getItem('access_token') || '';
-  return `${BASE_URL}/api/thumbnail?type=${type}&path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}&w=${w}&h=${h}&token=${encodeURIComponent(token)}`;
+  return `${BASE_URL}/api/thumbnail?type=${type}&path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}&w=${w}&h=${h}`;
 };
 
 // ── Stats & ZIP ────────────────────────────────────────────────────────────

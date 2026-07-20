@@ -19,6 +19,11 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	maxExtractedZipEntries = 500
+	maxExtractedZipBytes   = int64(200 * 1024 * 1024)
+)
+
 // FilesHandler handles file-related endpoints
 type FilesHandler struct {
 	mc     *minioclient.Client
@@ -34,7 +39,11 @@ func NewFilesHandler(mc *minioclient.Client, cfg *config.Config, logger *zap.Log
 // ListFiles handles GET /api/files?type=Images&path=/
 func (h *FilesHandler) ListFiles(c *gin.Context) {
 	resourceTypeName := c.Query("type")
-	folderPath := c.Query("path")
+	folderPath, err := minioclient.NormalizeFolderPath(c.Query("path"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid folder path"))
+		return
+	}
 
 	rt, err := h.cfg.GetResourceType(resourceTypeName)
 	if err != nil {
@@ -87,6 +96,12 @@ func (h *FilesHandler) DeleteFiles(c *gin.Context) {
 		return
 	}
 
+	folderPath, err := minioclient.NormalizeFolderPath(req.Path)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid folder path"))
+		return
+	}
+
 	rt, err := h.cfg.GetResourceType(req.Type)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, errorResp(400, "Unknown resource type"))
@@ -95,7 +110,12 @@ func (h *FilesHandler) DeleteFiles(c *gin.Context) {
 
 	keys := make([]string, 0, len(req.Files))
 	for _, name := range req.Files {
-		key := minioclient.BuildKey(rt.Prefix, req.Path, name)
+		fileName, err := minioclient.NormalizeObjectName(name)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errorResp(400, "Invalid file name"))
+			return
+		}
+		key := minioclient.BuildKey(rt.Prefix, folderPath, fileName)
 		keys = append(keys, key)
 	}
 
@@ -116,6 +136,22 @@ func (h *FilesHandler) RenameFile(c *gin.Context) {
 		return
 	}
 
+	folderPath, err := minioclient.NormalizeFolderPath(req.Path)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid folder path"))
+		return
+	}
+	fileName, err := minioclient.NormalizeObjectName(req.Name)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid file name"))
+		return
+	}
+	newName, err := minioclient.NormalizeObjectName(req.NewName)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid new file name"))
+		return
+	}
+
 	rt, err := h.cfg.GetResourceType(req.Type)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, errorResp(400, "Unknown resource type"))
@@ -123,10 +159,10 @@ func (h *FilesHandler) RenameFile(c *gin.Context) {
 	}
 
 	// Preserve extension
-	oldExt := strings.ToLower(filepath.Ext(req.Name))
-	newExt := strings.ToLower(filepath.Ext(req.NewName))
+	oldExt := strings.ToLower(filepath.Ext(fileName))
+	newExt := strings.ToLower(filepath.Ext(newName))
 	if newExt == "" {
-		req.NewName = req.NewName + oldExt
+		newName = newName + oldExt
 	}
 
 	if !rt.IsExtensionAllowed(newExt) {
@@ -134,8 +170,8 @@ func (h *FilesHandler) RenameFile(c *gin.Context) {
 		return
 	}
 
-	srcKey := minioclient.BuildKey(rt.Prefix, req.Path, req.Name)
-	dstKey := minioclient.BuildKey(rt.Prefix, req.Path, req.NewName)
+	srcKey := minioclient.BuildKey(rt.Prefix, folderPath, fileName)
+	dstKey := minioclient.BuildKey(rt.Prefix, folderPath, newName)
 
 	if err := h.mc.RenameFile(c.Request.Context(), srcKey, dstKey); err != nil {
 		h.logger.Error("RenameFile failed", zap.Error(err))
@@ -143,7 +179,7 @@ func (h *FilesHandler) RenameFile(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"renamed": true, "newName": req.NewName, "url": h.mc.PublicURL(dstKey)})
+	c.JSON(http.StatusOK, gin.H{"renamed": true, "newName": newName, "url": h.mc.PublicURL(dstKey)})
 }
 
 // MoveFiles handles POST /api/files/move
@@ -164,9 +200,24 @@ func (h *FilesHandler) MoveFiles(c *gin.Context) {
 		if err != nil {
 			continue
 		}
+		srcPath, err := minioclient.NormalizeFolderPath(f.Path)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errorResp(400, "Invalid source folder path"))
+			return
+		}
+		dstPath, err := minioclient.NormalizeFolderPath(req.Destination.Path)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errorResp(400, "Invalid destination folder path"))
+			return
+		}
+		fileName, err := minioclient.NormalizeObjectName(f.Name)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errorResp(400, "Invalid file name"))
+			return
+		}
 
-		srcKey := minioclient.BuildKey(srcRT.Prefix, f.Path, f.Name)
-		dstKey := minioclient.BuildKey(dstRT.Prefix, req.Destination.Path, f.Name)
+		srcKey := minioclient.BuildKey(srcRT.Prefix, srcPath, fileName)
+		dstKey := minioclient.BuildKey(dstRT.Prefix, dstPath, fileName)
 
 		if err := h.mc.RenameFile(c.Request.Context(), srcKey, dstKey); err != nil {
 			h.logger.Warn("MoveFile failed", zap.String("src", srcKey), zap.Error(err))
@@ -196,9 +247,24 @@ func (h *FilesHandler) CopyFiles(c *gin.Context) {
 		if err != nil {
 			continue
 		}
+		srcPath, err := minioclient.NormalizeFolderPath(f.Path)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errorResp(400, "Invalid source folder path"))
+			return
+		}
+		dstPath, err := minioclient.NormalizeFolderPath(req.Destination.Path)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errorResp(400, "Invalid destination folder path"))
+			return
+		}
+		fileName, err := minioclient.NormalizeObjectName(f.Name)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errorResp(400, "Invalid file name"))
+			return
+		}
 
-		srcKey := minioclient.BuildKey(srcRT.Prefix, f.Path, f.Name)
-		dstKey := minioclient.BuildKey(dstRT.Prefix, req.Destination.Path, f.Name)
+		srcKey := minioclient.BuildKey(srcRT.Prefix, srcPath, fileName)
+		dstKey := minioclient.BuildKey(dstRT.Prefix, dstPath, fileName)
 
 		if err := h.mc.CopyFile(c.Request.Context(), srcKey, dstKey); err != nil {
 			h.logger.Warn("CopyFile failed", zap.String("src", srcKey), zap.Error(err))
@@ -213,8 +279,16 @@ func (h *FilesHandler) CopyFiles(c *gin.Context) {
 // DownloadFile handles GET /api/file/download
 func (h *FilesHandler) DownloadFile(c *gin.Context) {
 	resourceTypeName := c.Query("type")
-	folderPath := c.Query("path")
-	fileName := c.Query("name")
+	folderPath, err := minioclient.NormalizeFolderPath(c.Query("path"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid folder path"))
+		return
+	}
+	fileName, err := minioclient.NormalizeObjectName(c.Query("name"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid file name"))
+		return
+	}
 
 	if fileName == "" {
 		c.JSON(http.StatusBadRequest, errorResp(400, "Missing file name"))
@@ -241,7 +315,11 @@ func (h *FilesHandler) DownloadFile(c *gin.Context) {
 // UploadFile handles POST /api/upload (multipart form)
 func (h *FilesHandler) UploadFile(c *gin.Context) {
 	resourceTypeName := c.PostForm("type")
-	folderPath := c.PostForm("path")
+	folderPath, err := minioclient.NormalizeFolderPath(c.PostForm("path"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid folder path"))
+		return
+	}
 
 	rt, err := h.cfg.GetResourceType(resourceTypeName)
 	if err != nil {
@@ -255,6 +333,11 @@ func (h *FilesHandler) UploadFile(c *gin.Context) {
 		return
 	}
 	defer file.Close()
+	fileName, err := minioclient.NormalizeObjectName(header.Filename)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid file name"))
+		return
+	}
 
 	// Validate size
 	maxBytes := rt.MaxSizeMB * 1024 * 1024
@@ -264,7 +347,7 @@ func (h *FilesHandler) UploadFile(c *gin.Context) {
 	}
 
 	// Validate extension
-	ext := strings.ToLower(filepath.Ext(header.Filename))
+	ext := strings.ToLower(filepath.Ext(fileName))
 	if !rt.IsExtensionAllowed(ext) {
 		c.JSON(http.StatusBadRequest, errorResp(400, fmt.Sprintf("Extension %q not allowed for %s", ext, rt.Name)))
 		return
@@ -280,7 +363,7 @@ func (h *FilesHandler) UploadFile(c *gin.Context) {
 		contentType = mime.String()
 	}
 
-	key := minioclient.BuildKey(rt.Prefix, folderPath, header.Filename)
+	key := minioclient.BuildKey(rt.Prefix, folderPath, fileName)
 	if err := h.mc.PutFile(c.Request.Context(), key, contentType, file, header.Size); err != nil {
 		h.logger.Error("PutFile failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, errorResp(500, "Failed to upload file"))
@@ -289,7 +372,7 @@ func (h *FilesHandler) UploadFile(c *gin.Context) {
 
 	fileURL := h.mc.PublicURL(key)
 	c.JSON(http.StatusOK, models.UploadResponse{
-		FileName: header.Filename,
+		FileName: fileName,
 		Uploaded: 1,
 		URL:      fileURL,
 	})
@@ -298,7 +381,16 @@ func (h *FilesHandler) UploadFile(c *gin.Context) {
 // CKEditorUpload handles POST /api/upload/ck (CKEditor 5 format)
 func (h *FilesHandler) CKEditorUpload(c *gin.Context) {
 	resourceTypeName := c.DefaultPostForm("type", "Images")
-	folderPath := c.DefaultPostForm("path", "/")
+	folderPath, err := minioclient.NormalizeFolderPath(c.DefaultPostForm("path", "/"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.CKEditorUploadResponse{
+			Uploaded: 0,
+			Error: &struct {
+				Message string `json:"message"`
+			}{"Invalid folder path"},
+		})
+		return
+	}
 
 	rt, err := h.cfg.GetResourceType(resourceTypeName)
 	if err != nil {
@@ -309,37 +401,55 @@ func (h *FilesHandler) CKEditorUpload(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.CKEditorUploadResponse{
 			Uploaded: 0,
-			Error:    &struct{ Message string `json:"message"` }{"No file provided"},
+			Error: &struct {
+				Message string `json:"message"`
+			}{"No file provided"},
 		})
 		return
 	}
 	defer file.Close()
+	fileName, err := minioclient.NormalizeObjectName(header.Filename)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.CKEditorUploadResponse{
+			Uploaded: 0,
+			Error: &struct {
+				Message string `json:"message"`
+			}{"Invalid file name"},
+		})
+		return
+	}
 
 	maxBytes := rt.MaxSizeMB * 1024 * 1024
 	if header.Size > maxBytes {
 		c.JSON(http.StatusBadRequest, models.CKEditorUploadResponse{
 			Uploaded: 0,
-			Error:    &struct{ Message string `json:"message"` }{fmt.Sprintf("File too large (max %d MB)", rt.MaxSizeMB)},
+			Error: &struct {
+				Message string `json:"message"`
+			}{fmt.Sprintf("File too large (max %d MB)", rt.MaxSizeMB)},
 		})
 		return
 	}
 
-	ext := strings.ToLower(filepath.Ext(header.Filename))
+	ext := strings.ToLower(filepath.Ext(fileName))
 	if !rt.IsExtensionAllowed(ext) {
 		c.JSON(http.StatusBadRequest, models.CKEditorUploadResponse{
 			Uploaded: 0,
-			Error:    &struct{ Message string `json:"message"` }{fmt.Sprintf("Extension %q not allowed", ext)},
+			Error: &struct {
+				Message string `json:"message"`
+			}{fmt.Sprintf("Extension %q not allowed", ext)},
 		})
 		return
 	}
 
 	contentType := header.Header.Get("Content-Type")
-	key := minioclient.BuildKey(rt.Prefix, folderPath, header.Filename)
+	key := minioclient.BuildKey(rt.Prefix, folderPath, fileName)
 	if err := h.mc.PutFile(c.Request.Context(), key, contentType, file, header.Size); err != nil {
 		h.logger.Error("CKEditorUpload PutFile failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, models.CKEditorUploadResponse{
 			Uploaded: 0,
-			Error:    &struct{ Message string `json:"message"` }{"Upload failed"},
+			Error: &struct {
+				Message string `json:"message"`
+			}{"Upload failed"},
 		})
 		return
 	}
@@ -347,7 +457,7 @@ func (h *FilesHandler) CKEditorUpload(c *gin.Context) {
 	fileURL := h.mc.PublicURL(key)
 	c.JSON(http.StatusOK, models.CKEditorUploadResponse{
 		Uploaded: 1,
-		FileName: header.Filename,
+		FileName: fileName,
 		URL:      fileURL,
 	})
 }
@@ -360,17 +470,28 @@ func (h *FilesHandler) CompressFiles(c *gin.Context) {
 		return
 	}
 
+	folderPath, err := minioclient.NormalizeFolderPath(req.Path)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid folder path"))
+		return
+	}
+	zipName, err := minioclient.NormalizeObjectName(req.ZipName)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid zip name"))
+		return
+	}
+
 	rt, err := h.cfg.GetResourceType(req.Type)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, errorResp(400, "Unknown resource type"))
 		return
 	}
 
-	if !strings.HasSuffix(strings.ToLower(req.ZipName), ".zip") {
-		req.ZipName = req.ZipName + ".zip"
+	if !strings.HasSuffix(strings.ToLower(zipName), ".zip") {
+		zipName = zipName + ".zip"
 	}
 
-	dstKey := minioclient.BuildKey(rt.Prefix, req.Path, req.ZipName)
+	dstKey := minioclient.BuildKey(rt.Prefix, folderPath, zipName)
 
 	// Create a temporary zip file
 	tmpFile, err := os.CreateTemp("", "compress-*.zip")
@@ -385,24 +506,29 @@ func (h *FilesHandler) CompressFiles(c *gin.Context) {
 	zipWriter := zip.NewWriter(tmpFile)
 
 	for _, filename := range req.Files {
-		srcKey := minioclient.BuildKey(rt.Prefix, req.Path, filename)
+		fileName, err := minioclient.NormalizeObjectName(filename)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errorResp(400, "Invalid file name"))
+			return
+		}
+		srcKey := minioclient.BuildKey(rt.Prefix, folderPath, fileName)
 		reader, _, err := h.mc.GetObject(c.Request.Context(), srcKey)
 		if err != nil {
 			h.logger.Warn("Failed to open source file for zipping", zap.String("key", srcKey), zap.Error(err))
 			continue
 		}
 
-		writer, err := zipWriter.Create(filename)
+		writer, err := zipWriter.Create(fileName)
 		if err != nil {
 			reader.Close()
-			h.logger.Warn("Failed to create zip header", zap.String("file", filename), zap.Error(err))
+			h.logger.Warn("Failed to create zip header", zap.String("file", fileName), zap.Error(err))
 			continue
 		}
 
 		_, err = io.Copy(writer, reader)
 		reader.Close()
 		if err != nil {
-			h.logger.Warn("Failed to copy content to zip", zap.String("file", filename), zap.Error(err))
+			h.logger.Warn("Failed to copy content to zip", zap.String("file", fileName), zap.Error(err))
 			continue
 		}
 	}
@@ -436,7 +562,7 @@ func (h *FilesHandler) CompressFiles(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"compressed": true,
-		"fileName":   req.ZipName,
+		"fileName":   zipName,
 		"url":        h.mc.PublicURL(dstKey),
 	})
 }
@@ -449,13 +575,24 @@ func (h *FilesHandler) ExtractZip(c *gin.Context) {
 		return
 	}
 
+	folderPath, err := minioclient.NormalizeFolderPath(req.Path)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid folder path"))
+		return
+	}
+	fileName, err := minioclient.NormalizeObjectName(req.FileName)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid zip file name"))
+		return
+	}
+
 	rt, err := h.cfg.GetResourceType(req.Type)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, errorResp(400, "Unknown resource type"))
 		return
 	}
 
-	srcKey := minioclient.BuildKey(rt.Prefix, req.Path, req.FileName)
+	srcKey := minioclient.BuildKey(rt.Prefix, folderPath, fileName)
 
 	// Fetch ZIP from MinIO
 	reader, _, err := h.mc.GetObject(c.Request.Context(), srcKey)
@@ -492,15 +629,21 @@ func (h *FilesHandler) ExtractZip(c *gin.Context) {
 	defer zipReader.Close()
 
 	extractedCount := 0
+	var extractedBytes int64
 	for _, file := range zipReader.File {
 		if file.FileInfo().IsDir() {
 			continue
 		}
 
-		ext := strings.ToLower(filepath.Ext(file.Name))
-		if !rt.IsExtensionAllowed(ext) {
+		normName, nextBytes, err := validateZipExtractionEntry(file.Name, file.UncompressedSize64, extractedCount, extractedBytes, rt)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, errorResp(400, err.Error()))
+			return
+		}
+		if normName == "" {
 			continue
 		}
+		extractedBytes = nextBytes
 
 		fReader, err := file.Open()
 		if err != nil {
@@ -508,11 +651,9 @@ func (h *FilesHandler) ExtractZip(c *gin.Context) {
 			continue
 		}
 
-		// Normalize name and build destination key
-		normName := strings.ReplaceAll(file.Name, "\\", "/")
-		dstKey := minioclient.BuildKey(rt.Prefix, req.Path, normName)
+		dstKey := minioclient.BuildKey(rt.Prefix, folderPath, normName)
 
-		contentType := mime.TypeByExtension(ext)
+		contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(normName)))
 		if contentType == "" {
 			contentType = "application/octet-stream"
 		}
@@ -530,4 +671,27 @@ func (h *FilesHandler) ExtractZip(c *gin.Context) {
 		"extracted": true,
 		"count":     extractedCount,
 	})
+}
+
+func validateZipExtractionEntry(name string, uncompressedSize uint64, extractedCount int, extractedBytes int64, rt *config.ResourceTypeConfig) (string, int64, error) {
+	if extractedCount >= maxExtractedZipEntries {
+		return "", extractedBytes, fmt.Errorf("ZIP archive contains too many files")
+	}
+	if uncompressedSize > uint64(maxExtractedZipBytes) {
+		return "", extractedBytes, fmt.Errorf("ZIP archive is too large to extract")
+	}
+	nextBytes := extractedBytes + int64(uncompressedSize)
+	if nextBytes > maxExtractedZipBytes {
+		return "", extractedBytes, fmt.Errorf("ZIP archive is too large to extract")
+	}
+
+	normName, err := minioclient.NormalizeRelativeObjectPath(name)
+	if err != nil {
+		return "", extractedBytes, fmt.Errorf("ZIP archive contains invalid file paths")
+	}
+	ext := strings.ToLower(filepath.Ext(normName))
+	if !rt.IsExtensionAllowed(ext) {
+		return "", extractedBytes, nil
+	}
+	return normName, nextBytes, nil
 }

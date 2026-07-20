@@ -2,7 +2,7 @@ package auth
 
 import (
 	"context"
-	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,18 +11,16 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 const contextKeyUsername = "username"
 
 var remoteAuthClient = &http.Client{
-	Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
-	},
 	Timeout: 10 * time.Second,
+}
+
+type remoteAuthVerifyResponse struct {
+	Username string `json:"username"`
 }
 
 // Middleware returns a Gin middleware that validates Bearer JWT tokens
@@ -48,14 +46,9 @@ func Middleware(jwtSecret string) gin.HandlerFunc {
 			}
 		}
 
-		// 3. Fallback to query parameter "token" (useful for browser media requests)
-		if token == "" {
-			token = c.Query("token")
-		}
-
 		if token == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": gin.H{"code": 401, "message": "Authorization token required (via Header, Cookie, or token query param)"},
+				"error": gin.H{"code": 401, "message": "Authorization token required"},
 			})
 			return
 		}
@@ -127,12 +120,14 @@ func validateRemote(ctx context.Context, token, apiURL string) (string, error) {
 		return "", errors.New("invalid or expired token (remote check)")
 	}
 
-	// If valid, extract username from token payload (unverified, since verified remotely)
-	username := "admin" // Fallback default
-	var claims Claims
-	tokenObj, _, err := jwt.NewParser().ParseUnverified(token, &claims)
-	if err == nil && tokenObj != nil && claims.Username != "" {
-		username = claims.Username
+	var verified remoteAuthVerifyResponse
+	if err := json.NewDecoder(resp.Body).Decode(&verified); err != nil {
+		return "", fmt.Errorf("invalid remote validation response: %w", err)
+	}
+
+	username := strings.TrimSpace(verified.Username)
+	if username == "" {
+		return "", errors.New("remote validation response missing username")
 	}
 
 	return username, nil

@@ -26,7 +26,11 @@ func NewFoldersHandler(mc *minioclient.Client, cfg *config.Config, logger *zap.L
 // ListFolders handles GET /api/folders?type=Images&path=/
 func (h *FoldersHandler) ListFolders(c *gin.Context) {
 	resourceTypeName := c.Query("type")
-	folderPath := c.Query("path")
+	folderPath, err := minioclient.NormalizeFolderPath(c.Query("path"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid folder path"))
+		return
+	}
 
 	rt, err := h.cfg.GetResourceType(resourceTypeName)
 	if err != nil {
@@ -75,6 +79,12 @@ func (h *FoldersHandler) CreateFolder(c *gin.Context) {
 		return
 	}
 
+	folderPath, err := minioclient.NormalizeFolderPath(req.Path)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid folder path"))
+		return
+	}
+
 	rt, err := h.cfg.GetResourceType(req.Type)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, errorResp(400, "Unknown resource type"))
@@ -87,7 +97,7 @@ func (h *FoldersHandler) CreateFolder(c *gin.Context) {
 		return
 	}
 
-	prefix := minioclient.FolderPrefix(rt.Prefix, req.Path) + req.Name
+	prefix := minioclient.FolderPrefix(rt.Prefix, folderPath) + req.Name
 	if err := h.mc.CreateFolder(c.Request.Context(), prefix); err != nil {
 		h.logger.Error("CreateFolder failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, errorResp(500, "Failed to create folder"))
@@ -105,13 +115,19 @@ func (h *FoldersHandler) DeleteFolder(c *gin.Context) {
 		return
 	}
 
+	folderPath, err := minioclient.NormalizeFolderPath(req.Path)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid folder path"))
+		return
+	}
+
 	rt, err := h.cfg.GetResourceType(req.Type)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, errorResp(400, "Unknown resource type"))
 		return
 	}
 
-	prefix := minioclient.FolderPrefix(rt.Prefix, req.Path)
+	prefix := minioclient.FolderPrefix(rt.Prefix, folderPath)
 	if err := h.mc.DeleteFolder(c.Request.Context(), prefix); err != nil {
 		h.logger.Error("DeleteFolder failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, errorResp(500, "Failed to delete folder"))
@@ -129,6 +145,12 @@ func (h *FoldersHandler) RenameFolder(c *gin.Context) {
 		return
 	}
 
+	folderPath, err := minioclient.NormalizeFolderPath(req.Path)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, errorResp(400, "Invalid folder path"))
+		return
+	}
+
 	rt, err := h.cfg.GetResourceType(req.Type)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, errorResp(400, "Unknown resource type"))
@@ -142,13 +164,13 @@ func (h *FoldersHandler) RenameFolder(c *gin.Context) {
 
 	// Build old and new prefixes
 	// If path is "/photos/vacation/", old = "images/photos/vacation/", new = "images/photos/newname/"
-	pathParts := strings.Split(strings.Trim(req.Path, "/"), "/")
+	pathParts := strings.Split(strings.Trim(folderPath, "/"), "/")
 	parentPath := ""
 	if len(pathParts) > 1 {
 		parentPath = strings.Join(pathParts[:len(pathParts)-1], "/")
 	}
 
-	oldPrefix := minioclient.FolderPrefix(rt.Prefix, req.Path)
+	oldPrefix := minioclient.FolderPrefix(rt.Prefix, folderPath)
 	newPrefix := minioclient.FolderPrefix(rt.Prefix, parentPath) + req.NewName
 
 	if err := h.mc.RenameFolder(c.Request.Context(), oldPrefix, newPrefix); err != nil {

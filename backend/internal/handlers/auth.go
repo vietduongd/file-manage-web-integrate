@@ -74,15 +74,19 @@ func (h *AuthHandler) Token(c *gin.Context) {
 
 // Refresh handles POST /auth/refresh
 func (h *AuthHandler) Refresh(c *gin.Context) {
-	var req models.RefreshRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{
-			Error: models.ErrorDetail{Code: 400, Message: err.Error()},
-		})
-		return
+	refreshToken, err := c.Cookie("refresh_session")
+	if err != nil || refreshToken == "" {
+		var req models.RefreshRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{
+				Error: models.ErrorDetail{Code: 400, Message: "Refresh token required"},
+			})
+			return
+		}
+		refreshToken = req.RefreshToken
 	}
 
-	username, err := auth.ParseRefreshToken(req.RefreshToken, h.cfg.JWTSecret)
+	username, err := auth.ParseRefreshToken(refreshToken, h.cfg.JWTSecret)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, models.ErrorResponse{
 			Error: models.ErrorDetail{Code: 401, Message: "Invalid or expired refresh token"},
@@ -91,6 +95,12 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	}
 
 	h.writeTokenPair(c, username)
+}
+
+// Logout clears auth cookies.
+func (h *AuthHandler) Logout(c *gin.Context) {
+	h.clearAuthCookies(c)
+	c.JSON(http.StatusOK, gin.H{"loggedOut": true})
 }
 
 func (h *AuthHandler) writeTokenPair(c *gin.Context, username string) {
@@ -104,10 +114,25 @@ func (h *AuthHandler) writeTokenPair(c *gin.Context, username string) {
 		return
 	}
 
+	h.setAuthCookies(c, pair.AccessToken, pair.RefreshToken, accessTTL, refreshTTL)
 	c.JSON(http.StatusOK, models.TokenResponse{
 		AccessToken:  pair.AccessToken,
 		RefreshToken: pair.RefreshToken,
 		ExpiresIn:    pair.ExpiresIn,
 		TokenType:    "Bearer",
 	})
+}
+
+func (h *AuthHandler) setAuthCookies(c *gin.Context, accessToken, refreshToken string, accessTTL, refreshTTL time.Duration) {
+	secure := h.cfg.ServerEnv == "production"
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("file_session", accessToken, int(accessTTL.Seconds()), "/", "", secure, true)
+	c.SetCookie("refresh_session", refreshToken, int(refreshTTL.Seconds()), "/", "", secure, true)
+}
+
+func (h *AuthHandler) clearAuthCookies(c *gin.Context) {
+	secure := h.cfg.ServerEnv == "production"
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("file_session", "", -1, "/", "", secure, true)
+	c.SetCookie("refresh_session", "", -1, "/", "", secure, true)
 }

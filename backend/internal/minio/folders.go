@@ -2,6 +2,8 @@ package minioclient
 
 import (
 	"context"
+	"fmt"
+	"path"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -13,7 +15,8 @@ import (
 // Example: BuildKey("images", "/photos/", "cat.jpg") → "images/photos/cat.jpg"
 func BuildKey(prefix, folderPath, filename string) string {
 	prefix = strings.Trim(prefix, "/")
-	folderPath = strings.Trim(folderPath, "/")
+	folderPath, _ = NormalizeFolderPath(folderPath)
+	filename, _ = NormalizeRelativeObjectPath(filename)
 	if folderPath == "" {
 		return prefix + "/" + filename
 	}
@@ -24,11 +27,60 @@ func BuildKey(prefix, folderPath, filename string) string {
 // Example: FolderPrefix("images", "/photos/") → "images/photos/"
 func FolderPrefix(prefix, folderPath string) string {
 	prefix = strings.Trim(prefix, "/")
-	folderPath = strings.Trim(folderPath, "/")
+	folderPath, _ = NormalizeFolderPath(folderPath)
 	if folderPath == "" {
 		return prefix + "/"
 	}
 	return prefix + "/" + folderPath + "/"
+}
+
+func NormalizeFolderPath(folderPath string) (string, error) {
+	folderPath = strings.Trim(strings.TrimSpace(strings.ReplaceAll(folderPath, "\\", "/")), "/")
+	return normalizeRelativePath(folderPath, true)
+}
+
+func NormalizeObjectName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || name == "." || name == ".." {
+		return "", fmt.Errorf("invalid object name")
+	}
+	if strings.ContainsAny(name, `/\`) || strings.ContainsRune(name, 0) {
+		return "", fmt.Errorf("object name must not contain path separators")
+	}
+	return name, nil
+}
+
+func NormalizeRelativeObjectPath(objectPath string) (string, error) {
+	return normalizeRelativePath(objectPath, false)
+}
+
+func normalizeRelativePath(value string, allowEmpty bool) (string, error) {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
+	if value == "" || value == "/" {
+		if allowEmpty {
+			return "", nil
+		}
+		return "", fmt.Errorf("path is required")
+	}
+	if strings.HasPrefix(value, "/") {
+		return "", fmt.Errorf("absolute paths are not allowed")
+	}
+	if strings.ContainsRune(value, 0) {
+		return "", fmt.Errorf("path contains invalid characters")
+	}
+
+	parts := strings.Split(value, "/")
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." {
+			return "", fmt.Errorf("path contains invalid segment %q", part)
+		}
+	}
+
+	cleaned := strings.Trim(path.Clean("/"+value), "/")
+	if cleaned == "." || strings.HasPrefix(cleaned, "../") {
+		return "", fmt.Errorf("path escapes resource root")
+	}
+	return cleaned, nil
 }
 
 // ListFolders returns virtual folder names under a given prefix (one level deep).

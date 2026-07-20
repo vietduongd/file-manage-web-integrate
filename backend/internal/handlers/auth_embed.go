@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
-	"github.com/ckfindercompatible/backend/internal/auth"
 	"github.com/ckfindercompatible/backend/internal/models"
 	"github.com/gin-gonic/gin"
 )
@@ -56,32 +54,12 @@ func (h *AuthHandler) EmbedLogin(c *gin.Context) {
 		return
 	}
 
-	// Generate access token (JWT)
-	accessTTL := time.Duration(h.cfg.JWTExpiryHours) * time.Hour
-	refreshTTL := time.Duration(h.cfg.JWTRefreshExpiryHours) * time.Hour
-	pair, err := auth.GenerateTokenPair(username, h.cfg.JWTSecret, accessTTL, refreshTTL)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
-			Error: models.ErrorDetail{Code: 500, Message: "Failed to generate session token"},
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, models.TokenResponse{
-		AccessToken:  pair.AccessToken,
-		RefreshToken: pair.RefreshToken,
-		ExpiresIn:    int(accessTTL.Seconds()),
-		TokenType:    "Bearer",
-	})
+	h.writeTokenPair(c, username)
 }
 
 func (h *AuthHandler) verifyEmbedTicket(ctx context.Context, ticket string) (string, error) {
 	verifyURL := strings.TrimSpace(h.cfg.EmbedTicketVerifyURL)
 	if verifyURL == "" {
-		// Fallback for development if not configured
-		if h.cfg.ServerEnv != "production" {
-			return "manage", nil // Return default username for local testing
-		}
 		return "", externalAuthError{
 			status:  http.StatusServiceUnavailable,
 			message: "External auth verifier is not configured",

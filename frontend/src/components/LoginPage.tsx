@@ -15,9 +15,7 @@ export function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      const data = await login(username, password);
-      localStorage.setItem('access_token', data.access_token);
-      localStorage.setItem('refresh_token', data.refresh_token);
+      await login(username, password);
       setAuthenticated(true);
     } catch {
       setError('Tên đăng nhập hoặc mật khẩu không đúng');

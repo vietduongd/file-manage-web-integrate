@@ -64,7 +64,7 @@ interface FileManagerState {
 
 export const useFileManagerStore = create<FileManagerState>((set, get) => ({
   // Auth
-  isAuthenticated: !!localStorage.getItem('access_token'),
+  isAuthenticated: false,
   setAuthenticated: (v) => set({ isAuthenticated: v }),
 
   // Resource types

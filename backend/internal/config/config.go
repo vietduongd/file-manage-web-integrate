@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -34,11 +35,7 @@ type Config struct {
 	AdminPassword string
 
 	// External auth
-	ExternalAuthVerifyURL    string
-	ExternalAuthVerifyMethod string
-	ExternalAuthTimeout      time.Duration
-	ExternalAuthAppID        string
-	ExternalAuthAPIKey       string
+	ExternalAuthTimeout time.Duration
 
 	// Embed ticket auth
 	EmbedTicketVerifyURL  string
@@ -83,18 +80,14 @@ func Load() *Config {
 		JWTExpiryHours:        getEnvInt("JWT_EXPIRY_HOURS", 24),
 		JWTRefreshExpiryHours: getEnvInt("JWT_REFRESH_EXPIRY_HOURS", 168),
 
-		AdminUsername:            getEnv("ADMIN_USERNAME", "admin"),
-		AdminPassword:            getEnv("ADMIN_PASSWORD", "admin123"),
-		ExternalAuthVerifyURL:    getEnv("EXTERNAL_AUTH_VERIFY_URL", ""),
-		ExternalAuthVerifyMethod: strings.ToUpper(getEnv("EXTERNAL_AUTH_VERIFY_METHOD", "GET")),
-		ExternalAuthTimeout:      time.Duration(getEnvInt("EXTERNAL_AUTH_TIMEOUT_SECONDS", 5)) * time.Second,
-		ExternalAuthAppID:        getEnv("EXTERNAL_AUTH_APP_ID", ""),
-		ExternalAuthAPIKey:       getEnv("EXTERNAL_AUTH_API_KEY", ""),
-		EmbedTicketVerifyURL:     getEnv("EMBED_TICKET_VERIFY_URL", ""),
-		EmbedTicketServiceKey:    getEnv("EMBED_TICKET_SERVICE_KEY", ""),
-		LoginRateLimitMax:        getEnvInt("LOGIN_RATE_LIMIT_MAX", 5),
-		LoginRateLimitWindow:     time.Duration(getEnvInt("LOGIN_RATE_LIMIT_WINDOW_SECONDS", 600)) * time.Second,
-		LoginRateLimitDisabled:   getEnvBool("LOGIN_RATE_LIMIT_DISABLED", false),
+		AdminUsername:          getEnv("ADMIN_USERNAME", "admin"),
+		AdminPassword:          getEnv("ADMIN_PASSWORD", "admin123"),
+		ExternalAuthTimeout:    time.Duration(getEnvInt("EXTERNAL_AUTH_TIMEOUT_SECONDS", 5)) * time.Second,
+		EmbedTicketVerifyURL:   getEnv("EMBED_TICKET_VERIFY_URL", ""),
+		EmbedTicketServiceKey:  getEnv("EMBED_TICKET_SERVICE_KEY", ""),
+		LoginRateLimitMax:      getEnvInt("LOGIN_RATE_LIMIT_MAX", 5),
+		LoginRateLimitWindow:   time.Duration(getEnvInt("LOGIN_RATE_LIMIT_WINDOW_SECONDS", 600)) * time.Second,
+		LoginRateLimitDisabled: getEnvBool("LOGIN_RATE_LIMIT_DISABLED", false),
 
 		MaxUploadSizeMB: int64(getEnvInt("MAX_UPLOAD_SIZE_MB", 50)),
 
@@ -106,6 +99,31 @@ func Load() *Config {
 	}
 
 	return cfg
+}
+
+func LoadValidated() (*Config, error) {
+	loaded := Load()
+	if err := loaded.Validate(); err != nil {
+		return nil, err
+	}
+	return loaded, nil
+}
+
+func (c *Config) Validate() error {
+	if c.ServerEnv != "production" {
+		return nil
+	}
+
+	if c.JWTSecret == "" ||
+		c.JWTSecret == "change-me-in-production" ||
+		c.JWTSecret == "your-super-secret-jwt-key-change-in-production" ||
+		len(c.JWTSecret) < 32 {
+		return errors.New("JWT_SECRET must be set to a strong production secret")
+	}
+	if c.AdminPassword == "" || c.AdminPassword == "admin123" {
+		return errors.New("ADMIN_PASSWORD must be changed in production")
+	}
+	return nil
 }
 
 // Get returns the loaded configuration (panics if not loaded)

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import {
   fetchConfig, fetchFiles, deleteFiles,
-  thumbnailUrl, type FileInfo, copyFiles, moveFiles, extractZip, uploadFile,
+  thumbnailUrl, type FileInfo, copyFiles, moveFiles, extractZip, uploadFile, logout,
 } from '../api/filemanager';
 import { useFileManagerStore } from '../store/fileManagerStore';
 import { FolderTree } from './FolderTree';
@@ -373,9 +373,12 @@ export function FileManager() {
     setContextMenu({ x: e.clientX, y: e.clientY, file });
   };
 
-  const handleLogout = () => {
-    localStorage.clear();
-    setAuthenticated(false);
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } finally {
+      setAuthenticated(false);
+    }
   };
 
   return (
