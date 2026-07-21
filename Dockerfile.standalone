@@ -1,0 +1,39 @@
+# Stage 1: Build Backend
+FROM golang:1.22-alpine AS backend-builder
+WORKDIR /app
+# Install build dependencies
+RUN apk add --no-cache gcc musl-dev
+# Download dependencies
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+# Build the application
+COPY backend/ .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /server ./cmd/server
+
+# Stage 2: Build Frontend
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app
+COPY frontend/package*.json ./
+RUN npm install
+COPY frontend/ .
+RUN npm run build
+
+# Stage 3: Final Runtime
+FROM nginx:alpine
+# Install ca-certificates and tzdata for Go backend
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+# Copy backend binary
+COPY --from=backend-builder /server /app/server
+# Copy frontend build
+COPY --from=frontend-builder /app/dist /usr/share/nginx/html
+# Copy custom Nginx configuration
+COPY nginx-standalone.conf /etc/nginx/conf.d/default.conf
+
+# Expose both ports (Nginx for FE and Backend directly if needed)
+EXPOSE 80
+EXPOSE 8080
+
+# Start both backend and nginx using shell
+CMD ["/bin/sh", "-c", "/app/server & nginx -g 'daemon off;'"]
