@@ -32,6 +32,7 @@ interface FileManagerState {
   refreshFiles: () => void;
   selectedFiles: Set<string>;
   toggleSelectFile: (name: string) => void;
+  selectOnlyFile: (name: string) => void;
   selectAllFiles: () => void;
   clearSelection: () => void;
 
@@ -102,6 +103,11 @@ export const useFileManagerStore = create<FileManagerState>((set, get) => ({
     if (sel.has(name)) sel.delete(name);
     else sel.add(name);
     set({ selectedFiles: sel });
+  },
+  // Chế độ chọn đơn: click lại file đang chọn thì bỏ chọn, ngược lại thay thế toàn bộ selection
+  selectOnlyFile: (name) => {
+    const sel = get().selectedFiles;
+    set({ selectedFiles: sel.has(name) && sel.size === 1 ? new Set() : new Set([name]) });
   },
   selectAllFiles: () => set({ selectedFiles: new Set(get().files.map((f) => f.name)) }),
   clearSelection: () => set({ selectedFiles: new Set() }),

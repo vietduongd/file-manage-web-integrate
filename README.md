@@ -133,6 +133,62 @@ ClassicEditor.create(document.querySelector('#editor'), {
 });
 ```
 
+## Tích hợp TinyMCE 8
+
+```typescript
+import { mediaManagerFilePicker } from './src/tinymce/filePicker';
+
+tinymce.init({
+  selector: '#editor',
+  file_picker_types: 'image media file',
+  file_picker_callback: mediaManagerFilePicker({
+    baseUrl: 'https://file.example.com/embed',
+    ticket: () => currentEmbedTicket,
+  }),
+});
+```
+
+Upload trực tiếp từ editor dùng chung endpoint `/api/upload/ck`:
+
+```typescript
+images_upload_handler: (blobInfo) => new Promise((resolve, reject) => {
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', 'http://localhost:8080/api/upload/ck');
+  xhr.withCredentials = true;              // auth bằng cookie
+  xhr.responseType = 'json';
+  xhr.onload = () => xhr.response?.uploaded
+    ? resolve(xhr.response.url)
+    : reject({ message: 'Upload thất bại', remove: true });
+  xhr.onerror = () => reject('Lỗi mạng');
+  const fd = new FormData();
+  fd.append('upload', blobInfo.blob(), blobInfo.filename());
+  fd.append('type', 'Images');
+  fd.append('path', '/');
+  xhr.send(fd);
+}),
+```
+
+### Query params của trang embed
+
+| Param | Mặc định | Mô tả |
+|---|---|---|
+| `ticket` | — | Ticket đăng nhập embed, tự xoá khỏi URL sau khi dùng |
+| `mode` | — | `popup` hoặc `iframe` — bật chế độ tích hợp (trong iframe thì tự nhận diện) |
+| `multiple` | `1` | `0`/`false`/`no`/`off` để chỉ cho chọn 1 file |
+| `origin` | `*` | Origin của trang cha, dùng làm targetOrigin khi postMessage |
+| `CKEditorFuncNum` | — | Callback number của CKEditor 4 |
+
+Message trả về trang cha:
+
+```js
+{
+  sender: 'media-manager', action: 'select',
+  url: '...', urls: ['...'],              // format phẳng (tương thích cũ)
+  mceAction: 'mediaManagerSelect',        // để TinyMCE route sang onMessage
+  data: { url: '...', urls: ['...'] },
+}
+```
+
 ## Cấu hình .env
 
 | Biến | Mặc định | Mô tả |

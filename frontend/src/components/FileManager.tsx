@@ -54,7 +54,7 @@ export function FileManager() {
     resourceTypes, setResourceTypes,
     currentPath, setCurrentPath,
     files, setFiles, fileRefreshKey, refreshFiles,
-    selectedFiles, toggleSelectFile, selectAllFiles, clearSelection,
+    selectedFiles, toggleSelectFile, selectOnlyFile, selectAllFiles, clearSelection,
     viewMode, setViewMode,
     showUpload, setShowUpload,
     showNewFolder, setShowNewFolder,
@@ -82,6 +82,19 @@ export function FileManager() {
     window.location.pathname.includes('/embed') ||
     (window.parent && window.parent !== window);
 
+  // ?multiple=0|false|no => chỉ cho chọn 1 file. Mặc định vẫn cho chọn nhiều.
+  const multipleParam = (urlParams.get('multiple') || '').toLowerCase();
+  const allowMultiple = !['0', 'false', 'no', 'off'].includes(multipleParam);
+
+  // ?origin=https://cms.example.com => postMessage đúng origin thay vì wildcard.
+  // Không truyền thì fallback '*' để giữ tương thích với các bên tích hợp cũ.
+  const targetOrigin = urlParams.get('origin') || '*';
+
+  const handleSelectFile = useCallback((name: string) => {
+    if (allowMultiple) toggleSelectFile(name);
+    else selectOnlyFile(name);
+  }, [allowMultiple, toggleSelectFile, selectOnlyFile]);
+
   const loadFiles = useCallback(() => {
     setLoading(true);
     clearSelection();
@@ -101,7 +114,8 @@ export function FileManager() {
     setDeleteConfirmTarget(Array.from(selectedFiles));
   };
 
-  const handleChooseFiles = useCallback((fileUrls: string[]) => {
+  const handleChooseFiles = useCallback((urls: string[]) => {
+    const fileUrls = allowMultiple ? urls : urls.slice(0, 1);
     const funcNum = urlParams.get('CKEditorFuncNum');
     if (funcNum) {
       if (window.opener) {
@@ -117,19 +131,27 @@ export function FileManager() {
       }
     }
 
-    const msg = {
-      sender: 'media-manager',
-      action: 'select',
+    const payload = {
       url: fileUrls[0] || '', // fallback cho độ tương thích đơn
       urls: fileUrls,         // danh sách toàn bộ các file được chọn
     };
+    const msg = {
+      sender: 'media-manager',
+      action: 'select',
+      ...payload,
+      // TinyMCE URL dialog chỉ route message sang onMessage khi có mceAction,
+      // và đọc dữ liệu trong `data`. Giữ song song các field phẳng ở trên
+      // để bên tích hợp cũ (postMessage thuần) không phải sửa gì.
+      mceAction: 'mediaManagerSelect',
+      data: payload,
+    };
     if (window.opener) {
-      window.opener.postMessage(msg, '*');
+      window.opener.postMessage(msg, targetOrigin);
       window.close();
     } else if (window.parent && window.parent !== window) {
-      window.parent.postMessage(msg, '*');
+      window.parent.postMessage(msg, targetOrigin);
     }
-  }, [urlParams]);
+  }, [urlParams, allowMultiple, targetOrigin]);
 
   const handlePaste = useCallback(async () => {
     if (!clipboard) return;
@@ -248,6 +270,7 @@ export function FileManager() {
 
       // Ctrl + A: select all files
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        if (!allowMultiple) return;
         e.preventDefault();
         selectAllFiles();
         return;
@@ -321,7 +344,7 @@ export function FileManager() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [selectedFiles, activeResourceType, currentPath, clipboard, selectAllFiles, setClipboard, clearSelection, handlePaste, handleDeleteSelected, setRenameTarget]);
+  }, [selectedFiles, activeResourceType, currentPath, clipboard, allowMultiple, selectAllFiles, setClipboard, clearSelection, handlePaste, handleDeleteSelected, setRenameTarget]);
 
   // Breadcrumb
   const breadcrumbParts = currentPath.split('/').filter(Boolean);
@@ -460,7 +483,7 @@ export function FileManager() {
                     }
                   }}
                 >
-                  Chọn file ({selectedFiles.size})
+                  {allowMultiple ? `Chọn file (${selectedFiles.size})` : 'Chọn file'}
                 </button>
               </>
             )}
@@ -586,7 +609,7 @@ export function FileManager() {
                         };
                         e.dataTransfer.setData('application/json', JSON.stringify(payload));
                       }}
-                      onClick={(e) => { e.stopPropagation(); toggleSelectFile(file.name); }}
+                      onClick={(e) => { e.stopPropagation(); handleSelectFile(file.name); }}
                       onContextMenu={(e) => handleContextMenu(e, file)}
                       onDoubleClick={() => isIntegrationMode ? handleChooseFiles([file.url]) : setPreviewFile(file)}
                     >
@@ -594,7 +617,7 @@ export function FileManager() {
                         type="checkbox"
                         className="file-card-checkbox"
                         checked={sel}
-                        onChange={() => toggleSelectFile(file.name)}
+                        onChange={() => handleSelectFile(file.name)}
                         onClick={(e) => e.stopPropagation()}
                       />
                       <div className="file-card-thumb">
@@ -622,7 +645,9 @@ export function FileManager() {
                 <thead>
                   <tr>
                     <th style={{ width: 32 }}>
-                      <input type="checkbox" onChange={(e) => e.target.checked ? selectAllFiles() : clearSelection()} />
+                      {allowMultiple && (
+                        <input type="checkbox" onChange={(e) => e.target.checked ? selectAllFiles() : clearSelection()} />
+                      )}
                     </th>
                     <th>Tên</th>
                     <th>Kích thước</th>
@@ -647,7 +672,7 @@ export function FileManager() {
                           };
                           e.dataTransfer.setData('application/json', JSON.stringify(payload));
                         }}
-                        onClick={(e) => { e.stopPropagation(); toggleSelectFile(file.name); }}
+                        onClick={(e) => { e.stopPropagation(); handleSelectFile(file.name); }}
                         onContextMenu={(e) => handleContextMenu(e, file)}
                         onDoubleClick={() => isIntegrationMode ? handleChooseFiles([file.url]) : setPreviewFile(file)}
                       >
@@ -655,7 +680,7 @@ export function FileManager() {
                           <input
                             type="checkbox"
                             checked={sel}
-                            onChange={() => toggleSelectFile(file.name)}
+                            onChange={() => handleSelectFile(file.name)}
                             onClick={(e) => e.stopPropagation()}
                           />
                         </td>
