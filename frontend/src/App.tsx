@@ -24,8 +24,15 @@ export default function App() {
         const ticket = urlParams.get('ticket');
         if (ticket) {
           await embedLogin(ticket);
-          // Remove the ticket from URL to prevent re-processing
-          window.history.replaceState({}, document.title, window.location.pathname);
+          // Chỉ xoá `ticket` khỏi URL để tránh dùng lại; giữ nguyên các param
+          // tích hợp còn lại (mode, multiple, origin, ...) cho FileManager đọc.
+          urlParams.delete('ticket');
+          const remaining = urlParams.toString();
+          window.history.replaceState(
+            {},
+            document.title,
+            window.location.pathname + (remaining ? `?${remaining}` : '')
+          );
         }
 
         const cfg = await fetchConfig();
