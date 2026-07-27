@@ -82,9 +82,9 @@ export function FileManager() {
     window.location.pathname.includes('/embed') ||
     (window.parent && window.parent !== window);
 
-  // ?multiple=0|false|no => chỉ cho chọn 1 file. Mặc định vẫn cho chọn nhiều.
+  // Mặc định chỉ cho chọn 1 file. ?multiple=1|true|yes|on mới bật chọn nhiều.
   const multipleParam = (urlParams.get('multiple') || '').toLowerCase();
-  const allowMultiple = !['0', 'false', 'no', 'off'].includes(multipleParam);
+  const allowMultiple = ['1', 'true', 'yes', 'on'].includes(multipleParam);
 
   // ?origin=https://cms.example.com => postMessage đúng origin thay vì wildcard.
   // Không truyền thì fallback '*' để giữ tương thích với các bên tích hợp cũ.

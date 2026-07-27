@@ -174,7 +174,7 @@ images_upload_handler: (blobInfo) => new Promise((resolve, reject) => {
 |---|---|---|
 | `ticket` | — | Ticket đăng nhập embed, tự xoá khỏi URL sau khi dùng |
 | `mode` | — | `popup` hoặc `iframe` — bật chế độ tích hợp (trong iframe thì tự nhận diện) |
-| `multiple` | `1` | `0`/`false`/`no`/`off` để chỉ cho chọn 1 file |
+| `multiple` | `0` | Mặc định chỉ chọn 1 file; `1`/`true`/`yes`/`on` để bật chọn nhiều |
 | `origin` | `*` | Origin của trang cha, dùng làm targetOrigin khi postMessage |
 | `CKEditorFuncNum` | — | Callback number của CKEditor 4 |
 
