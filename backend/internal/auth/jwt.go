@@ -8,6 +8,14 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// Issuer phân biệt hai loại token. Chúng ký cùng một secret nên nếu không
+// kiểm claim này thì access token và refresh token dùng thay nhau được,
+// làm mất tác dụng của việc đặt TTL khác nhau cho từng loại.
+const (
+	issuerAccess  = "ckfinder-compatible"
+	issuerRefresh = "ckfinder-compatible-refresh"
+)
+
 // Claims represents the JWT payload
 type Claims struct {
 	Username string `json:"username"`
@@ -32,7 +40,7 @@ func GenerateTokenPair(username, secret string, accessTTL, refreshTTL time.Durat
 			Subject:   username,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(accessTTL)),
-			Issuer:    "ckfinder-compatible",
+			Issuer:    issuerAccess,
 		},
 	}
 	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString([]byte(secret))
@@ -45,7 +53,7 @@ func GenerateTokenPair(username, secret string, accessTTL, refreshTTL time.Durat
 		Subject:   username,
 		IssuedAt:  jwt.NewNumericDate(now),
 		ExpiresAt: jwt.NewNumericDate(now.Add(refreshTTL)),
-		Issuer:    "ckfinder-compatible-refresh",
+		Issuer:    issuerRefresh,
 	}
 	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims).SignedString([]byte(secret))
 	if err != nil {
@@ -66,7 +74,7 @@ func ParseAccessToken(tokenStr, secret string) (*Claims, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return []byte(secret), nil
-	})
+	}, jwt.WithIssuer(issuerAccess))
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +93,7 @@ func ParseRefreshToken(tokenStr, secret string) (string, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return []byte(secret), nil
-	})
+	}, jwt.WithIssuer(issuerRefresh))
 	if err != nil {
 		return "", err
 	}
