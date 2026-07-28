@@ -1,7 +1,7 @@
 {
-  "name": "frontend",
+  "name": "file-manage-web-integrate",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -23,9 +23,9 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.101.0",
-    "axios": "^1.17.0",
-    "lucide-react": "^1.17.0",
+    "@tanstack/react-query": "^5.101.4",
+    "axios": "^1.18.1",
+    "lucide-react": "^1.27.0",
     "react-dropzone": "^15.0.0",
     "react-hot-toast": "^2.6.0",
     "zustand": "^5.0.14"

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { FileManager } from '../FileManager';
+import { FileManager } from '../../components/FileManager';
 import * as api from '../../api/filemanager';
 import { useFileManagerStore } from '../../store/fileManagerStore';
 

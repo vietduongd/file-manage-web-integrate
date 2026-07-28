@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { RenameModal, NewFolderModal, DeleteFolderModal, ConfirmModal, CompressModal } from '../Modals';
+import { RenameModal, NewFolderModal, DeleteFolderModal, ConfirmModal, CompressModal } from '../../components/Modals';
 import * as api from '../../api/filemanager';
 import { useFileManagerStore } from '../../store/fileManagerStore';
 

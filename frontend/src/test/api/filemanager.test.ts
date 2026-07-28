@@ -20,7 +20,7 @@ import {
   compressFiles,
   extractZip,
   fetchStats,
-} from '../filemanager';
+} from '../../api/filemanager';
 
 describe('filemanager API functions', () => {
   beforeEach(() => {

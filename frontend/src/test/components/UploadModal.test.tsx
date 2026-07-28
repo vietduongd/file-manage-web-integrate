@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { UploadModal } from '../UploadModal';
+import { UploadModal } from '../../components/UploadModal';
 import * as api from '../../api/filemanager';
 
 vi.mock('../../api/filemanager', () => ({

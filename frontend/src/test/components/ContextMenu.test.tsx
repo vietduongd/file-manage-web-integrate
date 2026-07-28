@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ContextMenu, PreviewModal } from '../ContextMenu';
+import { ContextMenu, PreviewModal } from '../../components/ContextMenu';
 import { useFileManagerStore } from '../../store/fileManagerStore';
 
 const dummyFile = {

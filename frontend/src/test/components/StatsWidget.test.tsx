@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { StatsWidget } from '../StatsWidget';
+import { StatsWidget } from '../../components/StatsWidget';
 import * as api from '../../api/filemanager';
 
 vi.mock('../../api/filemanager', () => ({

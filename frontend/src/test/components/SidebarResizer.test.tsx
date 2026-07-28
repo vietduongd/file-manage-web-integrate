@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { SidebarResizer } from '../SidebarResizer';
+import { SidebarResizer } from '../../components/SidebarResizer';
 
 describe('SidebarResizer Component', () => {
   it('renders resizer element with role separator', () => {
@@ -15,7 +15,6 @@ describe('SidebarResizer Component', () => {
     render(<SidebarResizer width={240} onResize={onResizeMock} />);
     const resizer = screen.getByRole('separator');
 
-    // Element pointer capture mocks for jsdom
     resizer.setPointerCapture = vi.fn();
     resizer.hasPointerCapture = vi.fn().mockReturnValue(true);
     resizer.releasePointerCapture = vi.fn();

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { FolderTree } from '../FolderTree';
+import { FolderTree } from '../../components/FolderTree';
 import * as api from '../../api/filemanager';
 import { useFileManagerStore } from '../../store/fileManagerStore';
 

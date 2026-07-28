@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildEmbedUrl, mediaManagerFilePicker } from '../filePicker';
+import { buildEmbedUrl, mediaManagerFilePicker } from '../../tinymce/filePicker';
 
 describe('TinyMCE filePicker adapter', () => {
   describe('buildEmbedUrl', () => {
@@ -52,7 +52,6 @@ describe('TinyMCE filePicker adapter', () => {
         })
       );
 
-      // Extract onMessage callback passed to openUrl
       const openUrlArg = mockEditor.windowManager.openUrl.mock.calls[0][0];
       const mockApi = { close: vi.fn() };
 

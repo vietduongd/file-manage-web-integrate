@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { CKFinderUploadAdapterPlugin } from '../uploadAdapter';
+import { CKFinderUploadAdapterPlugin } from '../../ckeditor/uploadAdapter';
 
 describe('CKFinderUploadAdapterPlugin', () => {
   let mockXHR: any;
@@ -68,7 +68,6 @@ describe('CKFinderUploadAdapterPlugin', () => {
     expect(mockXHR.open).toHaveBeenCalledWith('POST', 'http://localhost:8080/api/upload/ck', true);
     expect(mockXHR.send).toHaveBeenCalled();
 
-    // Trigger load event on XHR
     const loadHandler = mockXHR.addEventListener.mock.calls.find(([event]: [string]) => event === 'load')[1];
     mockXHR.response = { uploaded: true, url: 'http://example.com/uploaded.png' };
     loadHandler();

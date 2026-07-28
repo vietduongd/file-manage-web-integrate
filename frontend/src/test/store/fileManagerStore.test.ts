@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   useFileManagerStore,
   clampSidebarWidth,
   SIDEBAR_MIN_WIDTH,
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_DEFAULT_WIDTH,
-} from '../fileManagerStore';
+} from '../../store/fileManagerStore';
 
 describe('fileManagerStore helpers', () => {
   describe('clampSidebarWidth', () => {
@@ -19,7 +19,6 @@ describe('fileManagerStore helpers', () => {
 
 describe('useFileManagerStore state & actions', () => {
   beforeEach(() => {
-    // Reset store state before each test
     useFileManagerStore.setState({
       isAuthenticated: false,
       resourceTypes: [],
@@ -98,7 +97,6 @@ describe('useFileManagerStore state & actions', () => {
     ];
     useFileManagerStore.getState().setFiles(testFiles);
 
-    // toggleSelectFile
     useFileManagerStore.getState().toggleSelectFile('a.png');
     expect(useFileManagerStore.getState().selectedFiles.has('a.png')).toBe(true);
 
@@ -108,19 +106,16 @@ describe('useFileManagerStore state & actions', () => {
     useFileManagerStore.getState().toggleSelectFile('a.png');
     expect(useFileManagerStore.getState().selectedFiles.has('a.png')).toBe(false);
 
-    // selectOnlyFile
     useFileManagerStore.getState().selectOnlyFile('b.png');
-    expect(useFileManagerStore.getState().selectedFiles.size).toBe(0); // toggles off if single selected file clicked again
+    expect(useFileManagerStore.getState().selectedFiles.size).toBe(0);
 
     useFileManagerStore.getState().selectOnlyFile('a.png');
     expect(useFileManagerStore.getState().selectedFiles.has('a.png')).toBe(true);
     expect(useFileManagerStore.getState().selectedFiles.size).toBe(1);
 
-    // selectAllFiles
     useFileManagerStore.getState().selectAllFiles();
     expect(useFileManagerStore.getState().selectedFiles.size).toBe(2);
 
-    // clearSelection
     useFileManagerStore.getState().clearSelection();
     expect(useFileManagerStore.getState().selectedFiles.size).toBe(0);
   });
@@ -133,7 +128,6 @@ describe('useFileManagerStore state & actions', () => {
     expect(useFileManagerStore.getState().sidebarWidth).toBe(300);
     expect(localStorage.getItem('mm.sidebarWidth')).toBe('300');
 
-    // Clamp value over max
     useFileManagerStore.getState().setSidebarWidth(500);
     expect(useFileManagerStore.getState().sidebarWidth).toBe(SIDEBAR_MAX_WIDTH);
   });
