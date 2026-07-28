@@ -159,11 +159,14 @@ func (h *FilesHandler) RenameFile(c *gin.Context) {
 		return
 	}
 
-	// Preserve extension
+	// Giữ đuôi file cũ khi tên mới không có đuôi. Phải cập nhật luôn newExt,
+	// nếu không phần kiểm tra bên dưới vẫn chạy với chuỗi rỗng và mọi lần
+	// đổi tên không kèm đuôi đều bị từ chối — nhánh này trước đây là code chết.
 	oldExt := strings.ToLower(filepath.Ext(fileName))
 	newExt := strings.ToLower(filepath.Ext(newName))
 	if newExt == "" {
 		newName = newName + oldExt
+		newExt = oldExt
 	}
 
 	if !rt.IsExtensionAllowed(newExt) {

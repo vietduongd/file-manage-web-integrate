@@ -182,16 +182,40 @@ func TestRenameFileMovesObject(t *testing.T) {
 	}
 }
 
-// TestRenameFileWithoutExtensionIsRejected ghi nhận hành vi HIỆN TẠI.
-// files.go:164 gán newName += oldExt để giữ đuôi file, nhưng dòng 168 lại
-// kiểm rt.IsExtensionAllowed(newExt) với newExt rỗng ban đầu, nên nhánh
-// "giữ đuôi" không bao giờ dùng được. Xem báo cáo kèm theo.
-func TestRenameFileWithoutExtensionIsRejected(t *testing.T) {
+// Tên mới không có đuôi thì kế thừa đuôi của tên cũ — người dùng đổi tên
+// trong UI thường chỉ gõ phần tên, không gõ lại ".png".
+func TestRenameFileInheritsExtensionWhenNewNameHasNone(t *testing.T) {
 	fake, router := newFilesRouter(t)
 	fake.Put("images/cu.png", []byte("x"))
 
 	w := doJSON(t, router, http.MethodPatch, "/api/file/rename",
 		`{"type":"Images","path":"/","name":"cu.png","newName":"moi"}`)
+	assertStatus(t, w, http.StatusOK)
+
+	if !fake.Has("images/moi.png") {
+		t.Fatalf("phải kế thừa đuôi .png, có: %v", fake.Keys())
+	}
+	if fake.Has("images/cu.png") {
+		t.Error("tên cũ phải bị xoá")
+	}
+
+	var resp struct {
+		NewName string `json:"newName"`
+	}
+	decodeJSON(t, w, &resp)
+	if resp.NewName != "moi.png" {
+		t.Errorf("newName trả về = %q, muốn %q", resp.NewName, "moi.png")
+	}
+}
+
+// Đuôi kế thừa vẫn phải qua kiểm tra: file không có đuôi thì không suy ra
+// được loại gì, không được ngầm cho qua.
+func TestRenameFileRejectsWhenNeitherNameHasExtension(t *testing.T) {
+	fake, router := newFilesRouter(t)
+	fake.Put("images/khong-duoi", []byte("x"))
+
+	w := doJSON(t, router, http.MethodPatch, "/api/file/rename",
+		`{"type":"Images","path":"/","name":"khong-duoi","newName":"moi"}`)
 	assertStatus(t, w, http.StatusBadRequest)
 }
 
