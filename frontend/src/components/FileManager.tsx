@@ -4,6 +4,7 @@ import {
   LayoutGrid, List, Upload, FolderPlus, Trash2,
   RefreshCw, ChevronRight, LogOut,
   Images, Folder, Video,
+  PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import {
   fetchConfig, fetchFiles, deleteFiles,
@@ -15,6 +16,7 @@ import { UploadModal } from './UploadModal';
 import { RenameModal, NewFolderModal, ConfirmModal, CompressModal, DeleteFolderModal } from './Modals';
 import { ContextMenu, PreviewModal } from './ContextMenu';
 import { StatsWidget } from './StatsWidget';
+import { SidebarResizer } from './SidebarResizer';
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) return bytes + ' B';
@@ -56,6 +58,8 @@ export function FileManager() {
     files, setFiles, fileRefreshKey, refreshFiles,
     selectedFiles, toggleSelectFile, selectOnlyFile, selectAllFiles, clearSelection,
     viewMode, setViewMode,
+    sidebarOpen, toggleSidebar, setSidebarOpen,
+    sidebarWidth, setSidebarWidth,
     showUpload, setShowUpload,
     showNewFolder, setShowNewFolder,
     renameTarget, setRenameTarget,
@@ -409,6 +413,14 @@ export function FileManager() {
       {/* Header */}
       <header className="app-header">
         <div className="logo">
+          <button
+            className="sidebar-toggle-btn"
+            onClick={toggleSidebar}
+            title={sidebarOpen ? 'Ẩn thanh bên' : 'Hiện thanh bên'}
+            aria-expanded={sidebarOpen}
+          >
+            {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+          </button>
           <Image size={20} />
           <span>Media Manager</span>
         </div>
@@ -422,9 +434,14 @@ export function FileManager() {
         </div>
       </header>
 
-      <div className="app-body">
+      <div className="app-body" style={{ '--sidebar-w': `${sidebarWidth}px` } as React.CSSProperties}>
+        {/* Backdrop — chỉ hiện ở chế độ overlay (dưới 720px), CSS lo việc ẩn/hiện */}
+        {sidebarOpen && (
+          <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />
+        )}
+
         {/* Sidebar */}
-        <aside className="sidebar">
+        <aside className={`sidebar ${sidebarOpen ? '' : 'collapsed'}`}>
           <div className="sidebar-section">
             <div className="sidebar-section-title">Loại tài nguyên</div>
             {resourceTypes.map((rt) => (
@@ -446,6 +463,7 @@ export function FileManager() {
           <div style={{ marginTop: 'auto' }}>
             <StatsWidget />
           </div>
+          {sidebarOpen && <SidebarResizer width={sidebarWidth} onResize={setSidebarWidth} />}
         </aside>
 
         {/* Main panel */}

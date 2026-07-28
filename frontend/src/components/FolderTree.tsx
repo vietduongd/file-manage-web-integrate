@@ -7,7 +7,20 @@ import {
   Trash2,
 } from 'lucide-react';
 import { fetchFolders, moveFiles, type FolderInfo } from '../api/filemanager';
-import { useFileManagerStore } from '../store/fileManagerStore';
+import { SIDEBAR_BREAKPOINT, useFileManagerStore } from '../store/fileManagerStore';
+
+/**
+ * Chọn thư mục, đồng thời đóng sidebar khi đang ở chế độ overlay —
+ * ở màn hẹp sidebar che mất lưới file nên phải nhường chỗ ngay sau khi chọn.
+ */
+function useSelectFolder() {
+  const setCurrentPath = useFileManagerStore((s) => s.setCurrentPath);
+  const setSidebarOpen = useFileManagerStore((s) => s.setSidebarOpen);
+  return (path: string) => {
+    setCurrentPath(path);
+    if (window.innerWidth < SIDEBAR_BREAKPOINT) setSidebarOpen(false);
+  };
+}
 
 interface FolderTreeNodeProps {
   name: string;
@@ -21,7 +34,8 @@ function FolderTreeNode({ name, path, resourceType, depth, hasChildren }: Folder
   const [children, setChildren] = useState<FolderInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const { currentPath, setCurrentPath, folderRefreshKey, expandedPaths, togglePathExpanded, refreshFolderTree, setDeleteFolderTarget } = useFileManagerStore();
+  const { currentPath, folderRefreshKey, expandedPaths, togglePathExpanded, refreshFolderTree, setDeleteFolderTarget } = useFileManagerStore();
+  const selectFolder = useSelectFolder();
   const isActive = currentPath === path;
   const isExpanded = expandedPaths.has(path);
 
@@ -45,8 +59,8 @@ function FolderTreeNode({ name, path, resourceType, depth, hasChildren }: Folder
     <div>
       <div
         className={`folder-tree-item ${isActive ? 'active' : ''} ${isDragOver ? 'drag-over' : ''}`}
-        style={{ paddingLeft: `${8 + depth * 14}px` }}
-        onClick={() => setCurrentPath(path)}
+        style={{ '--depth': depth } as React.CSSProperties}
+        onClick={() => selectFolder(path)}
         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
         onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); }}
         onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(false); }}
@@ -89,7 +103,7 @@ function FolderTreeNode({ name, path, resourceType, depth, hasChildren }: Folder
         <span className="folder-icon">
           {isActive || isExpanded ? <FolderOpen size={14} /> : <Folder size={14} />}
         </span>
-        <span className="folder-name">{name}</span>
+        <span className="folder-name" title={name}>{name}</span>
         <button
           className="folder-delete-btn"
           title="Xóa thư mục"
@@ -120,7 +134,8 @@ function FolderTreeNode({ name, path, resourceType, depth, hasChildren }: Folder
 }
 
 export function FolderTree() {
-  const { activeResourceType, currentPath, setCurrentPath, folders, setFolders, folderRefreshKey, setExpandedPaths, refreshFolderTree } = useFileManagerStore();
+  const { activeResourceType, currentPath, folders, setFolders, folderRefreshKey, setExpandedPaths, refreshFolderTree } = useFileManagerStore();
+  const selectFolder = useSelectFolder();
   const [loading, setLoading] = useState(false);
   const [expandingAll, setExpandingAll] = useState(false);
   const [isRootDragOver, setIsRootDragOver] = useState(false);
@@ -182,7 +197,7 @@ export function FolderTree() {
       {/* Root */}
       <div
         className={`folder-tree-item ${currentPath === '/' ? 'active' : ''} ${isRootDragOver ? 'drag-over' : ''}`}
-        onClick={() => setCurrentPath('/')}
+        onClick={() => selectFolder('/')}
         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
         onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsRootDragOver(true); }}
         onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsRootDragOver(false); }}
@@ -218,7 +233,7 @@ export function FolderTree() {
       >
         <span className="toggle-icon" />
         <span className="folder-icon"><FolderOpen size={14} /></span>
-        <span className="folder-name">/ (Gốc)</span>
+        <span className="folder-name" title="/ (Gốc)">/ (Gốc)</span>
       </div>
 
       {loading ? (

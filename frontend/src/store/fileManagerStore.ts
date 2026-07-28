@@ -1,6 +1,35 @@
 import { create } from 'zustand';
 import type { FileInfo, FolderInfo, ResourceTypeInfo } from '../api/filemanager';
 
+// Dưới ngưỡng này sidebar chuyển sang dạng overlay và mặc định đóng
+// (iframe nhúng trong admin thường chỉ rộng 600–900px).
+export const SIDEBAR_BREAKPOINT = 720;
+export const SIDEBAR_MIN_WIDTH = 180;
+export const SIDEBAR_MAX_WIDTH = 420;
+export const SIDEBAR_DEFAULT_WIDTH = 240;
+
+const SIDEBAR_WIDTH_KEY = 'mm.sidebarWidth';
+
+export function clampSidebarWidth(w: number): number {
+  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(w)));
+}
+
+function readStoredSidebarWidth(): number {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+    if (!raw) return SIDEBAR_DEFAULT_WIDTH;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return SIDEBAR_DEFAULT_WIDTH;
+    return clampSidebarWidth(parsed);
+  } catch {
+    return SIDEBAR_DEFAULT_WIDTH; // localStorage bị chặn trong iframe third-party
+  }
+}
+
+function isWideViewport(): boolean {
+  return typeof window === 'undefined' || window.innerWidth >= SIDEBAR_BREAKPOINT;
+}
+
 interface FileManagerState {
   // Auth
   isAuthenticated: boolean;
@@ -39,6 +68,13 @@ interface FileManagerState {
   // View mode
   viewMode: 'grid' | 'list';
   setViewMode: (mode: 'grid' | 'list') => void;
+
+  // Sidebar
+  sidebarOpen: boolean;
+  toggleSidebar: () => void;
+  setSidebarOpen: (v: boolean) => void;
+  sidebarWidth: number;
+  setSidebarWidth: (w: number) => void;
 
   // Modals
   showUpload: boolean;
@@ -115,6 +151,21 @@ export const useFileManagerStore = create<FileManagerState>((set, get) => ({
   // View mode
   viewMode: 'grid',
   setViewMode: (viewMode) => set({ viewMode }),
+
+  // Sidebar
+  sidebarOpen: isWideViewport(),
+  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+  setSidebarOpen: (v) => set({ sidebarOpen: v }),
+  sidebarWidth: readStoredSidebarWidth(),
+  setSidebarWidth: (w) => {
+    const width = clampSidebarWidth(w);
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width));
+    } catch {
+      // Không lưu được thì vẫn áp dụng cho phiên hiện tại
+    }
+    set({ sidebarWidth: width });
+  },
 
   // Modals
   showUpload: false,

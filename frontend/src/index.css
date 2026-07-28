@@ -96,7 +96,8 @@ a { color: inherit; text-decoration: none; }
 
 /* ── Sidebar ───────────────────────────────────────────────────────── */
 .sidebar {
-  width: 240px;
+  position: relative;
+  width: var(--sidebar-w, 240px);
   background: var(--bg-secondary);
   border-right: 1px solid var(--border);
   display: flex;
@@ -104,6 +105,44 @@ a { color: inherit; text-decoration: none; }
   overflow: hidden;
   flex-shrink: 0;
 }
+
+/* Đóng ở màn rộng: co về 0 chứ không bỏ khỏi DOM, để giữ trạng thái cây */
+.sidebar.collapsed {
+  width: 0;
+  border-right: 0;
+}
+
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 2;
+  touch-action: none;
+}
+.sidebar-resizer:hover,
+.sidebar-resizer:active { background: var(--accent); }
+
+.sidebar-backdrop { display: none; }
+
+.sidebar-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.sidebar-toggle-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 .sidebar-section {
   padding: 12px 8px 8px;
@@ -145,26 +184,47 @@ a { color: inherit; text-decoration: none; }
   flex: 1;
   overflow-y: auto;
   padding: 4px 8px 16px;
+  /* Nguồn indent duy nhất của cây. Trước đây indent bị cộng dồn từ cả
+     .folder-children lẫn padding inline của item nên mỗi cấp thụt 30px,
+     tới cấp 4 là tên thư mục hết chỗ. */
+  --indent-base: 8px;
+  --indent-step: 12px;
 }
 
 .folder-tree-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 5px 8px;
+  padding-left: calc(var(--indent-base) + var(--depth, 0) * var(--indent-step));
   border-radius: var(--radius);
   cursor: pointer;
   font-size: 13px;
   color: var(--text-secondary);
   user-select: none;
-  transition: all 0.1s ease;
+  transition: background 0.1s ease, color 0.1s ease;
+  /* Vẽ đúng `depth` đường guide dọc, không cần thêm DOM.
+     Chỉ dùng background-image nên background-color của hover/active/drag-over
+     vẫn hoạt động bình thường. */
+  background-image: repeating-linear-gradient(to right,
+    var(--border) 0 1px, transparent 1px var(--indent-step));
+  background-size: calc(var(--depth, 0) * var(--indent-step)) 100%;
+  background-position: var(--indent-base) 0;
+  background-repeat: no-repeat;
 }
 .folder-tree-item:hover { background: var(--bg-hover); color: var(--text-primary); }
 .folder-tree-item.active { background: var(--accent-light); color: var(--accent-hover); }
 .folder-tree-item .toggle-icon { flex-shrink: 0; width: 16px; color: var(--text-muted); }
 .folder-tree-item .folder-icon { flex-shrink: 0; color: var(--warning); }
 .folder-tree-item .folder-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Overlay thay vì chiếm chỗ: trước đây nút này opacity:0 nhưng vẫn ăn
+   22px + 6px gap ở mọi hàng, kể cả khi vô hình. */
 .folder-delete-btn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -182,12 +242,18 @@ a { color: inherit; text-decoration: none; }
 .folder-tree-item.active .folder-delete-btn {
   opacity: 1;
 }
+/* Chừa chỗ để nút xoá không đè lên phần chữ đang đọc */
+.folder-tree-item:hover .folder-name,
+.folder-tree-item.active .folder-name {
+  padding-right: 26px;
+}
 .folder-delete-btn:hover {
   background: rgba(239, 68, 68, 0.1);
   color: var(--danger);
 }
 
-.folder-children { padding-left: 16px; }
+/* Chỉ nhóm DOM — indent đã do padding-left của .folder-tree-item lo */
+.folder-children { padding-left: 0; }
 
 /* ── Main panel ────────────────────────────────────────────────────── */
 .main-panel {
@@ -741,5 +807,41 @@ a { color: inherit; text-decoration: none; }
 @keyframes app-pulse {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
+}
+
+/* ── Sidebar overlay ở màn hẹp ─────────────────────────────────────── */
+/* Dưới 720px (iframe nhúng trong admin) sidebar phủ lên lưới file thay vì
+   chiếm chỗ cố định. Đây là breakpoint duy nhất của app. */
+@media (max-width: 719px) {
+  .app-body { position: relative; }
+
+  .sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 20;
+    width: min(280px, 85vw);
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.25);
+    transform: translateX(0);
+    transition: transform 0.2s ease;
+  }
+
+  .sidebar.collapsed {
+    width: min(280px, 85vw);
+    border-right: 1px solid var(--border);
+    transform: translateX(-100%);
+  }
+
+  /* Bề rộng do breakpoint quyết định nên không cho kéo tay */
+  .sidebar-resizer { display: none; }
+
+  .sidebar-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.35);
+  }
 }
 
