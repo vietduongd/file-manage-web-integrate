@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"archive/zip"
+	"bytes"
 	"fmt"
 	"io"
 	"mime"
@@ -651,6 +652,18 @@ func (h *FilesHandler) ExtractZip(c *gin.Context) {
 			continue
 		}
 
+		// Đọc hẳn ra bộ nhớ: stream của archive/zip không seek được, mà SDK
+		// cần seek về đầu để tính payload hash cho chữ ký SigV4. Truyền thẳng
+		// fReader thì PutObject luôn lỗi và không file nào được ghi ra.
+		// Dung lượng đã bị validateZipExtractionEntry chặn trên bằng
+		// maxExtractedZipBytes nên không sợ phình bộ nhớ.
+		content, err := io.ReadAll(fReader)
+		fReader.Close()
+		if err != nil {
+			h.logger.Warn("Failed to read file inside zip", zap.String("file", file.Name), zap.Error(err))
+			continue
+		}
+
 		dstKey := minioclient.BuildKey(rt.Prefix, folderPath, normName)
 
 		contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(normName)))
@@ -658,12 +671,10 @@ func (h *FilesHandler) ExtractZip(c *gin.Context) {
 			contentType = "application/octet-stream"
 		}
 
-		if err := h.mc.PutFile(c.Request.Context(), dstKey, contentType, fReader, int64(file.UncompressedSize64)); err != nil {
+		if err := h.mc.PutFile(c.Request.Context(), dstKey, contentType, bytes.NewReader(content), int64(len(content))); err != nil {
 			h.logger.Warn("Failed to upload extracted file to MinIO", zap.String("key", dstKey), zap.Error(err))
-			fReader.Close()
 			continue
 		}
-		fReader.Close()
 		extractedCount++
 	}
 

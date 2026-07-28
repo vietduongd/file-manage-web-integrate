@@ -9,6 +9,7 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -139,17 +140,9 @@ func getExt(filename string) string {
 	return ""
 }
 
-func readAll(r interface{ Read([]byte) (int, error) }) ([]byte, error) {
-	var buf bytes.Buffer
-	tmp := make([]byte, 32*1024)
-	for {
-		n, err := r.Read(tmp)
-		if n > 0 {
-			buf.Write(tmp[:n])
-		}
-		if err != nil {
-			break
-		}
-	}
-	return buf.Bytes(), nil
+// readAll đọc hết reader. Bản cũ tự cuộn vòng lặp và nuốt mọi lỗi bằng
+// `break` rồi luôn trả nil, nên một lần đọc hỏng giữa chừng sẽ cho ra ảnh
+// cụt mà không ai biết. io.ReadAll phân biệt đúng EOF với lỗi thật.
+func readAll(r io.Reader) ([]byte, error) {
+	return io.ReadAll(r)
 }
