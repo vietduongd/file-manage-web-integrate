@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -60,18 +59,10 @@ func main() {
 	r.Use(gin.Recovery())
 	r.Use(requestLogger(logger))
 
-	// CORS
+	// CORS — danh sách origin lấy từ FRONTEND_URL (xem config.IsOriginAllowed)
+	logger.Info("cors allowed origins", zap.Strings("origins", cfg.AllowedOrigins))
 	r.Use(cors.New(cors.Config{
-		AllowOriginFunc: func(origin string) bool {
-			if cfg.ServerEnv != "production" {
-				// Trong development: cho phép mọi localhost/127.0.0.1 ở bất kỳ port nào
-				return strings.HasPrefix(origin, "http://localhost") ||
-					strings.HasPrefix(origin, "http://127.0.0.1") ||
-					strings.HasPrefix(origin, "https://localhost")
-			}
-			// Trong production: chỉ cho phép FRONTEND_URL
-			return origin == cfg.FrontendURL
-		},
+		AllowOriginFunc: cfg.IsOriginAllowed,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length", "Content-Disposition"},

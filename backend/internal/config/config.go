@@ -56,6 +56,9 @@ type Config struct {
 
 	// CORS
 	FrontendURL string
+	// AllowedOrigins là FRONTEND_URL đã tách theo dấu phẩy và chuẩn hoá
+	// (bỏ khoảng trắng, bỏ dấu "/" ở cuối, hạ về chữ thường).
+	AllowedOrigins []string
 }
 
 var cfg *Config
@@ -97,8 +100,53 @@ func Load() *Config {
 
 		FrontendURL: getEnv("FRONTEND_URL", "http://localhost:3000"),
 	}
+	cfg.AllowedOrigins = parseOrigins(cfg.FrontendURL)
 
 	return cfg
+}
+
+// parseOrigins tách danh sách origin phân cách bằng dấu phẩy và chuẩn hoá từng phần tử.
+func parseOrigins(raw string) []string {
+	parts := strings.Split(raw, ",")
+	origins := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if o := normalizeOrigin(p); o != "" {
+			origins = append(origins, o)
+		}
+	}
+	return origins
+}
+
+// normalizeOrigin đưa origin về dạng so sánh được: bỏ khoảng trắng,
+// bỏ dấu "/" ở cuối và hạ scheme/host về chữ thường.
+func normalizeOrigin(origin string) string {
+	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(origin), "/"))
+}
+
+// IsOriginAllowed quyết định một Origin có được CORS chấp nhận hay không.
+// Ở mọi môi trường, các origin khai báo trong FRONTEND_URL đều được chấp nhận;
+// riêng ngoài production còn cho phép thêm localhost/127.0.0.1 ở bất kỳ port nào.
+func (c *Config) IsOriginAllowed(origin string) bool {
+	normalized := normalizeOrigin(origin)
+	if normalized == "" {
+		return false
+	}
+
+	for _, allowed := range c.AllowedOrigins {
+		if normalized == allowed {
+			return true
+		}
+	}
+
+	if c.ServerEnv != "production" {
+		for _, prefix := range []string{"http://localhost", "https://localhost", "http://127.0.0.1", "https://127.0.0.1"} {
+			if normalized == prefix || strings.HasPrefix(normalized, prefix+":") {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func LoadValidated() (*Config, error) {
@@ -122,6 +170,16 @@ func (c *Config) Validate() error {
 	}
 	if c.AdminPassword == "" || c.AdminPassword == "admin123" {
 		return errors.New("ADMIN_PASSWORD must be changed in production")
+	}
+	// Nếu quên đổi FRONTEND_URL, mọi request từ domain thật sẽ bị CORS chặn bằng 403 body rỗng
+	// — rất khó chẩn đoán. Chặn ngay lúc khởi động thay vì để lỗi lộ ra ở runtime.
+	if len(c.AllowedOrigins) == 0 {
+		return errors.New("FRONTEND_URL must list at least one allowed origin in production")
+	}
+	for _, origin := range c.AllowedOrigins {
+		if strings.HasPrefix(origin, "http://localhost") || strings.HasPrefix(origin, "http://127.0.0.1") {
+			return errors.New("FRONTEND_URL must be set to the public site origin in production, not " + origin)
+		}
 	}
 	return nil
 }

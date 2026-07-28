@@ -204,7 +204,7 @@ Message trả về trang cha:
 | `ADMIN_USERNAME` | `admin` | Username đăng nhập |
 | `ADMIN_PASSWORD` | `admin123` | Password đăng nhập |
 | `MAX_UPLOAD_SIZE_MB` | `50` | Kích thước tối đa upload |
-| `FRONTEND_URL` | `http://localhost:3000` | URL frontend (CORS) |
+| `FRONTEND_URL` | `http://localhost:3000` | Danh sách origin được CORS chấp nhận, phân cách bằng dấu phẩy. Production bắt buộc là domain thật (vd `https://file-manager.netecs.vn`) — để nguyên localhost thì server sẽ không khởi động được. |
 
 ## Production
 
