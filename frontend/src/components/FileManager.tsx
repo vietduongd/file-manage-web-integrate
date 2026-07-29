@@ -424,10 +424,11 @@ export function FileManager() {
           <Image size={20} />
           <span>Media Manager</span>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
+          <span className="header-location">
             {activeResourceType} · {currentPath}
           </span>
+          <StatsWidget variant="header" />
           <button className="toolbar-btn" onClick={handleLogout} title="Đăng xuất">
             <LogOut size={14} />
           </button>
@@ -442,27 +443,26 @@ export function FileManager() {
 
         {/* Sidebar */}
         <aside className={`sidebar ${sidebarOpen ? '' : 'collapsed'}`}>
-          <div className="sidebar-section">
-            <div className="sidebar-section-title">Loại tài nguyên</div>
+          {/* Loại tài nguyên: tab ngang để tiết kiệm chiều cao cho cây thư mục */}
+          <div className="resource-tabs" role="tablist" aria-label="Loại tài nguyên">
             {resourceTypes.map((rt) => (
               <button
                 key={rt.name}
-                className={`resource-type-btn ${activeResourceType === rt.name ? 'active' : ''}`}
+                role="tab"
+                aria-selected={activeResourceType === rt.name}
+                title={rt.name}
+                className={`resource-tab ${activeResourceType === rt.name ? 'active' : ''}`}
                 onClick={() => { setActiveResourceType(rt.name); setCurrentPath('/'); }}
               >
                 {getResourceIcon(rt.name)}
-                {rt.name}
+                <span>{rt.name}</span>
               </button>
             ))}
           </div>
-          <div className="sidebar-divider" />
           <div className="sidebar-section">
             <div className="sidebar-section-title">Thư mục</div>
           </div>
           <FolderTree />
-          <div style={{ marginTop: 'auto' }}>
-            <StatsWidget />
-          </div>
           {sidebarOpen && <SidebarResizer width={sidebarWidth} onResize={setSidebarWidth} />}
         </aside>
 

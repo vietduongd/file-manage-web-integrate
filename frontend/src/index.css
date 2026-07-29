@@ -157,22 +157,48 @@ a { color: inherit; text-decoration: none; }
   padding: 0 8px 6px;
 }
 
-.resource-type-btn {
+/* Tab loại tài nguyên: xếp ngang để không ăn chiều cao của cây thư mục */
+.resource-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 8px 8px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+.resource-tabs::-webkit-scrollbar { display: none; }
+
+.resource-tab {
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 8px 10px;
-  border-radius: var(--radius);
+  justify-content: center;
+  gap: 6px;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
 }
-.resource-type-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-.resource-type-btn.active { background: var(--accent-light); color: var(--accent-hover); }
-.resource-type-btn svg { opacity: 0.7; flex-shrink: 0; }
-.resource-type-btn.active svg { opacity: 1; }
+.resource-tab > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.resource-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.resource-tab.active {
+  background: var(--accent-light);
+  color: var(--accent-hover);
+  border-bottom-color: var(--accent);
+}
+.resource-tab svg { opacity: 0.7; flex-shrink: 0; }
+.resource-tab.active svg { opacity: 1; }
 
 .sidebar-divider {
   height: 1px;
@@ -767,6 +793,74 @@ a { color: inherit; text-decoration: none; }
 .stats-breakdown-item .val {
   font-weight: 500;
   color: var(--text-primary);
+}
+
+/* ── Stats trên header ────────────────────────────────────────────── */
+.header-location {
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stats-header {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.stats-header-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.stats-header-trigger:hover,
+.stats-header-trigger.active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.stats-header-text { white-space: nowrap; }
+.stats-header-used { font-weight: 600; color: var(--text-primary); }
+.stats-header-limit { color: var(--text-muted); }
+
+.stats-header-bar {
+  display: block;
+  width: 64px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+
+.stats-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: 260px;
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Màn hẹp: chỉ giữ icon + thanh tiến trình cho gọn header */
+@media (max-width: 720px) {
+  .header-location { display: none; }
+  .stats-header-text { display: none; }
 }
 
 /* ── Startup Loading Screen ────────────────────────────────────────── */
